@@ -1,0 +1,3523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c0e11">
+<meta name="description" content="Turn any image into high-detail ASCII art. Everything runs in your browser — nothing is uploaded.">
+<title>Image → ASCII</title>
+<!-- The only external request: fonts (system fallbacks are defined in --sans / --mono) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap">
+
+<style>
+/* =====================================================================
+   CSS 1. TOKENS
+   ===================================================================== */
+:root {
+  --bg:#0c0e11;
+  --surface:#13161a;
+  --surface-2:#181c21;
+  --field:#0f1216;
+  --border:#22272e;
+  --border-2:#2d343c;
+  --accent:#9aa7b3;
+  --text:#e6e9ed; --muted:#8b939e; --dim:#5c6570;
+  --success:#6fcf97; --warning:#e2b05a; --error:#e07a7a;
+  --radius:12px;
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme: dark;
+}
+
+/* =====================================================================
+   CSS 2. BASE
+   ===================================================================== */
+*,*::before,*::after { box-sizing:border-box; }
+[hidden] { display:none !important; }
+html { -webkit-text-size-adjust:100%; }
+body {
+  margin:0; background:var(--bg); color:var(--text);
+  font:16px/1.5 var(--sans);
+  -webkit-font-smoothing:antialiased; -moz-osx-font-smoothing:grayscale;
+  display:flex; flex-direction:column; min-height:100vh;
+}
+a { color:inherit; }
+h1,h2,h3 { margin:0; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+kbd {
+  font:500 11px var(--mono); color:var(--muted);
+  border:1px solid var(--border-2); border-bottom-width:2px; border-radius:4px;
+  padding:0 4px; background:var(--field);
+}
+
+/* =====================================================================
+   CSS 3. TOP BAR, PAGE HEAD, FOOTER
+   ===================================================================== */
+.topbar {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 24px; border-bottom:1px solid var(--border); font-size:14px;
+}
+.crumbs { display:flex; align-items:center; gap:8px; }
+.crumbs .brand { font-weight:700; text-decoration:none; color:var(--text); }
+.crumbs .brand:hover { text-decoration:underline; }
+.crumbs .sep { color:var(--dim); }
+.crumbs .here { color:var(--muted); }
+.gh { color:var(--muted); display:inline-flex; padding:6px; border-radius:8px; }
+.gh:hover { color:var(--text); background:var(--surface-2); }
+
+.wrap { width:100%; max-width:1720px; margin:0 auto; padding:0 24px; flex:1; }
+.page-head { padding:24px 0 20px; }
+.page-head h1 { font-size:22px; font-weight:600; letter-spacing:-.01em; }
+.tagline { margin:4px 0 0; color:var(--muted); font-size:14px; }
+
+.site-footer { font-size:13px; color:var(--dim); padding:24px 0 36px; text-align:center; }
+.site-footer a { color:var(--dim); text-decoration:none; }
+.site-footer a:hover { color:var(--muted); text-decoration:underline; }
+
+/* =====================================================================
+   CSS 4. LAYOUT
+   ===================================================================== */
+.layout {
+  display:grid; grid-template-columns:400px minmax(0,1fr);
+  gap:20px; align-items:start;
+}
+.controls {
+  position:sticky; top:16px; max-height:calc(100vh - 32px); overflow-y:auto;
+  display:flex; flex-direction:column; gap:12px;
+  padding-right:6px; margin-right:-6px; overscroll-behavior:contain;
+  scrollbar-width:thin; scrollbar-color:var(--border-2) transparent;
+}
+
+/* =====================================================================
+   CSS 5. CARDS & STEP ACCORDIONS
+   ===================================================================== */
+.card {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); padding:20px;
+}
+.card-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.card-title { font-size:13.5px; font-weight:600; }
+
+.step { padding:0; }
+.step-head { display:flex; align-items:center; gap:6px; padding:14px 14px 14px 16px; }
+.step-toggle {
+  flex:1; min-width:0; display:flex; align-items:center; gap:12px; text-align:left;
+  background:none; border:0; color:inherit; font:inherit; padding:2px; border-radius:8px; cursor:pointer;
+}
+.step-toggle.static { cursor:default; }
+.badge {
+  flex:none; width:24px; height:24px; border-radius:50%;
+  display:grid; place-items:center;
+  border:1px solid var(--border-2); background:var(--field);
+  font:600 12px var(--mono); color:var(--text);
+}
+.step-text { display:flex; flex-direction:column; min-width:0; }
+.step-title { font-size:14px; font-weight:600; line-height:1.3; }
+.step-hint { font-size:12.5px; color:var(--muted); line-height:1.35; }
+.chev { flex:none; margin-left:auto; color:var(--dim); transition:transform .15s; }
+.step-toggle[aria-expanded="false"] .chev { transform:rotate(-90deg); }
+.step-body { padding:6px 20px 20px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:16px; padding-top:18px; }
+
+.subhead {
+  font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--dim); margin:4px 0 -6px; display:flex; align-items:center; gap:10px;
+}
+.subhead::after { content:""; flex:1; height:1px; background:var(--border); }
+
+/* =====================================================================
+   CSS 6. FORM CONTROLS
+   ===================================================================== */
+.field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.field-row { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:20px; }
+.field label, .label { font-size:13.5px; color:var(--text); }
+.val { font:12px var(--mono); color:var(--muted); white-space:nowrap; }
+.hint { font-size:12.5px; color:var(--muted); margin:0; line-height:1.4; }
+.ctl-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 18px; }
+.ctl-grid > .full { grid-column:1 / -1; }
+
+input[type=range] { width:100%; margin:2px 0; accent-color:var(--accent); cursor:pointer; }
+input[type=range]:disabled { opacity:.4; cursor:not-allowed; }
+
+input[type=text], input[type=number] {
+  background:var(--field); border:1px solid var(--border); border-radius:8px;
+  padding:6px 8px; font:13px var(--mono); color:var(--text); width:100%;
+}
+input[type=number] { width:72px; text-align:right; }
+input[type=text]:focus, input[type=number]:focus, select:focus { border-color:var(--border-2); }
+.row-r { display:flex; align-items:center; gap:6px; }
+.unit { font:12px var(--mono); color:var(--muted); }
+
+select {
+  appearance:none; -webkit-appearance:none; width:100%;
+  background:var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%238b939e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  border:1px solid var(--border); border-radius:8px;
+  padding:9px 30px 9px 11px; font:14px var(--sans); color:var(--text); cursor:pointer;
+}
+select option { background:var(--surface); }
+
+.checks { display:flex; flex-wrap:wrap; gap:10px 20px; }
+.check { display:inline-flex; align-items:center; gap:8px; font-size:13.5px; cursor:pointer; user-select:none; }
+.check input { accent-color:var(--accent); width:15px; height:15px; margin:0; cursor:pointer; }
+
+.colors { display:grid; grid-template-columns:1fr 1fr; gap:12px 18px; }
+.color-field { display:flex; align-items:center; gap:10px; }
+input[type=color] {
+  width:38px; height:30px; padding:2px; border:1px solid var(--border); border-radius:8px;
+  background:var(--field); cursor:pointer; flex:none;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding:0; }
+input[type=color]::-webkit-color-swatch { border:0; border-radius:5px; }
+.hex { font:12px var(--mono); color:var(--muted); }
+
+/* ⓘ info badges + floating tooltip */
+.info {
+  display:inline-grid; place-items:center; width:15px; height:15px; margin-left:5px;
+  font-size:12px; line-height:1; color:var(--dim); cursor:help; border-radius:50%; vertical-align:-1px;
+}
+.info:hover, .info:focus-visible { color:var(--text); }
+.tip {
+  position:fixed; z-index:100; max-width:260px; pointer-events:none;
+  background:var(--surface-2); border:1px solid var(--border-2); border-radius:8px;
+  padding:7px 10px; font-size:12.5px; line-height:1.4; color:var(--text);
+}
+
+/* =====================================================================
+   CSS 7. BUTTONS, TILES, SEGMENTED CONTROLS
+   ===================================================================== */
+.btn {
+  appearance:none; background:transparent; color:var(--text);
+  border:1px solid var(--border-2); border-radius:8px;
+  font:600 13.5px var(--sans); padding:8px 13px; cursor:pointer;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  transition:background .12s, border-color .12s; white-space:nowrap;
+}
+.btn:hover { background:var(--surface-2); }
+.btn.sm { font-size:12.5px; padding:6px 11px; }
+.btn.icon { padding:6px 9px; min-width:30px; }
+.btn.primary { background:var(--text); color:var(--bg); border-color:var(--text); }
+.btn.primary:hover { background:#fff; border-color:#fff; }
+.btn[aria-pressed="true"] { background:var(--surface-2); border-color:var(--accent); }
+.btn.block { width:100%; }
+.btn-row { display:flex; flex-wrap:wrap; gap:6px; }
+.btn-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+
+.link-btn {
+  background:none; border:0; color:var(--muted); cursor:pointer;
+  font:500 12.5px var(--sans); padding:4px 7px; border-radius:6px; flex:none;
+}
+.link-btn:hover { color:var(--text); background:var(--surface-2); }
+
+.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(80px,1fr)); gap:8px; }
+.tile {
+  appearance:none; text-align:left; cursor:pointer; min-width:0;
+  background:var(--field); border:1px solid var(--border); color:var(--muted);
+  border-radius:10px; padding:8px 9px; font:500 12.5px/1.25 var(--sans);
+  display:flex; flex-direction:column; gap:5px;
+  transition:border-color .12s, background .12s, color .12s;
+}
+.tile:hover { border-color:var(--border-2); color:var(--text); }
+.tile[aria-checked="true"] { background:var(--surface-2); border-color:var(--accent); color:var(--text); }
+.tile .sample {
+  font:11px/1.15 var(--mono); color:var(--dim); white-space:pre; overflow:hidden;
+  letter-spacing:0; padding:3px 4px; border-radius:4px; background:rgba(0,0,0,.25);
+}
+.tile[aria-checked="true"] .sample { color:var(--muted); }
+.tile .sub { font-size:11px; color:var(--dim); margin-top:-4px; }
+
+.seg { display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--field); }
+.seg button {
+  flex:1 1 0; min-width:0; appearance:none; background:transparent; cursor:pointer;
+  border:0; border-left:1px solid var(--border); color:var(--muted);
+  font:500 12.5px/1.2 var(--sans); padding:7px 4px;
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+}
+.seg button:first-child { border-left:0; }
+.seg button:hover { color:var(--text); background:var(--surface-2); }
+.seg button[aria-checked="true"] { background:var(--surface-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--accent); border-radius:7px; }
+.seg .sample { font:11px var(--mono); color:var(--dim); }
+.seg button[aria-checked="true"] .sample { color:var(--muted); }
+
+/* =====================================================================
+   CSS 8. UPLOAD
+   ===================================================================== */
+.drop {
+  border:1.5px dashed var(--border-2); border-radius:10px; background:var(--field);
+  padding:22px 16px; text-align:center; color:var(--muted); font-size:13.5px; cursor:pointer;
+  transition:border-color .12s, background .12s;
+}
+.drop:hover, .drop.over { border-color:var(--accent); background:var(--surface-2); color:var(--text); }
+.drop svg { color:var(--dim); margin-bottom:6px; }
+.drop-main u { text-decoration-color:var(--dim); text-underline-offset:3px; }
+.drop-sub { font-size:12px; color:var(--dim); margin-top:4px; }
+.file-info { display:flex; align-items:center; gap:12px; }
+.file-info img {
+  width:52px; height:52px; object-fit:cover; border-radius:8px; border:1px solid var(--border);
+  background:var(--field); flex:none;
+}
+.file-meta { min-width:0; flex:1; }
+.file-name { font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.file-dims { font:12px var(--mono); color:var(--muted); }
+
+.controls-foot { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:4px 2px 8px; }
+.controls-foot .spacer { flex:1; }
+
+/* =====================================================================
+   CSS 9. PREVIEW PANEL
+   ===================================================================== */
+.preview {
+  position:sticky; top:16px; height:calc(100vh - 32px); min-height:420px;
+  display:flex; flex-direction:column; padding:0; overflow:hidden;
+}
+.panel-head {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 16px; border-bottom:1px solid var(--border);
+}
+.panel-title { font-size:13.5px; font-weight:600; }
+.status { display:flex; align-items:center; gap:7px; font-size:13px; color:var(--muted); min-width:0; }
+.status span:last-child { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dot { width:8px; height:8px; border-radius:50%; background:var(--success); flex:none; }
+.status[data-kind="busy"] .dot { background:var(--warning); }
+.status[data-kind="err"] .dot { background:var(--error); }
+.status[data-kind="err"] { color:var(--error); }
+
+.toolbar {
+  display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding:8px 12px; border-bottom:1px solid var(--border);
+}
+.toolbar .spacer { flex:1; }
+.zoom-val { font:12px var(--mono); color:var(--muted); min-width:46px; text-align:center; }
+
+.viewport {
+  position:relative; flex:1; min-height:0; overflow:hidden;
+  background:var(--bg); outline-offset:-2px;
+}
+.viewport.pannable { cursor:grab; }
+.viewport.dragging { cursor:grabbing; }
+.viewport.dragging .stage { user-select:none; }
+.stage { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; }
+.art { position:relative; overflow:hidden; }
+.art pre { margin:0; white-space:pre; display:block; font-kerning:none; font-variant-ligatures:none; }
+.art canvas { display:block; }
+.orig { position:absolute; inset:0; width:100%; height:100%; object-fit:fill; display:none; }
+.stage.compare .orig { display:block; }
+/* Compare: a draggable bar over the image. It lives inside the zoomed stage, so every
+   size is divided by the zoom (--s) to stay the same on screen. Original on the left, ASCII on the right. */
+.divider {
+  display:none; position:absolute; top:0; bottom:0; z-index:2;
+  width:calc(28px / var(--s, 1)); transform:translateX(-50%);
+  cursor:ew-resize; touch-action:none; outline:none;
+}
+.divider::before {
+  content:""; position:absolute; top:0; bottom:0; left:50%;
+  width:calc(2px / var(--s, 1)); transform:translateX(-50%);
+  background:var(--accent); box-shadow:0 0 calc(6px / var(--s, 1)) rgba(0,0,0,.6);
+}
+.divider .grip {
+  position:absolute; left:50%; top:50%; transform:translate(-50%, -50%);
+  width:calc(30px / var(--s, 1)); height:calc(30px / var(--s, 1)); border-radius:50%;
+  display:grid; place-items:center;
+  background:var(--surface-2); border:calc(1.5px / var(--s, 1)) solid var(--accent);
+  box-shadow:0 calc(2px / var(--s, 1)) calc(10px / var(--s, 1)) rgba(0,0,0,.5);
+  color:var(--text); font:700 calc(13px / var(--s, 1))/1 var(--sans); letter-spacing:calc(-1px / var(--s, 1));
+}
+.divider:hover .grip, .divider.active .grip { background:var(--text); color:var(--bg); }
+.divider:focus-visible .grip { outline:calc(2px / var(--s, 1)) solid var(--text); outline-offset:calc(2px / var(--s, 1)); }
+.stage.compare .divider { display:block; }
+.cmp-label {
+  display:none; position:absolute; top:calc(8px / var(--s, 1)); z-index:1; pointer-events:none;
+  font:600 calc(11px / var(--s, 1)) var(--sans); color:var(--text);
+  background:rgba(12,14,17,.75); padding:calc(2px / var(--s, 1)) calc(7px / var(--s, 1)); border-radius:calc(6px / var(--s, 1));
+}
+.cmp-label.left { left:calc(8px / var(--s, 1)); }
+.cmp-label.right { right:calc(8px / var(--s, 1)); }
+.stage.compare .cmp-label { display:block; }
+.vp-hint {
+  position:absolute; right:10px; bottom:8px; font-size:11.5px; color:var(--dim);
+  background:rgba(12,14,17,.75); padding:2px 8px; border-radius:6px; pointer-events:none;
+}
+.meta-row {
+  display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap;
+  padding:9px 16px; border-top:1px solid var(--border);
+  font:12.5px var(--mono); color:var(--muted);
+}
+
+/* =====================================================================
+   CSS 9b. SPLIT BUTTONS, MENUS, MAGIC TOUCH, COPY HINTS, MODAL
+   ===================================================================== */
+.split-btn { position:relative; display:inline-flex; align-items:stretch; min-width:0; }
+.split-btn.block { display:flex; width:100%; }
+.split-btn > .btn:first-child { border-top-right-radius:0; border-bottom-right-radius:0; min-width:0; }
+.split-btn.block > .btn:first-child { flex:1; }
+.split-btn > .btn.caret {
+  border-top-left-radius:0; border-bottom-left-radius:0; margin-left:-1px;
+  padding-left:9px; padding-right:9px; font-size:11px;
+}
+.btn.primary.caret { margin-left:0; border-left:1px solid rgba(12,14,17,.28); }
+.btn .tgt { font-weight:500; opacity:.65; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+
+/* ✨ Magic touch: the normal .btn with a subtle accent border */
+.btn.magic { border-color:var(--accent); background:rgba(154,167,179,.07); font-variant-numeric:tabular-nums; }
+.btn.magic:hover { background:var(--surface-2); }
+.btn.magic .sub { font-weight:500; font-size:12px; color:var(--muted); }
+.btn.magic[data-running="true"] { color:var(--muted); }
+.toolbar [data-magic-main] { min-width:122px; }
+.spin {
+  width:12px; height:12px; flex:none; border-radius:50%;
+  border:2px solid var(--border-2); border-top-color:var(--text); animation:spin .8s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.magic-wrap { margin:0 0 12px; }
+.magic-summary {
+  margin:7px 2px 0; font-size:12.5px; color:var(--muted); line-height:1.4;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* Menus (role="menu"), positioned with JS so no scroll container clips them */
+.menu {
+  position:fixed; z-index:150; min-width:240px; max-width:min(360px, calc(100vw - 16px));
+  padding:4px; background:var(--surface-2); border:1px solid var(--border-2); border-radius:10px;
+  box-shadow:0 12px 32px rgba(0,0,0,.45);
+}
+.menu [role^="menuitem"] {
+  position:relative; display:flex; flex-direction:column; gap:1px; width:100%; text-align:left;
+  appearance:none; background:none; border:0; border-radius:7px; padding:7px 10px 7px 28px;
+  color:var(--text); font:500 13px/1.3 var(--sans); cursor:pointer;
+}
+.menu [role^="menuitem"]:hover, .menu [role^="menuitem"]:focus-visible {
+  background:var(--field); outline:none; box-shadow:inset 0 0 0 1px var(--border-2);
+}
+.menu [aria-checked="true"]::before { content:"✓"; position:absolute; left:10px; top:7px; color:var(--accent); font-weight:700; }
+.menu .mi-hint { font-size:12px; font-weight:400; color:var(--muted); white-space:normal; }
+
+/* Copy block */
+.copy-block { display:flex; flex-direction:column; gap:7px; }
+.copy-meta { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.copy-hints { flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
+.copy-hints .hint { font-size:12.5px; }
+.copy-meta .link-btn { margin:-3px -7px 0 0; }
+.hint.warn { color:var(--warning); }
+.hint-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* Clarity readout in the meta row */
+.meta-right { display:inline-flex; align-items:center; gap:6px; }
+.clarity { color:var(--text); }
+.delta { font-size:11.5px; }
+.delta.up { color:var(--success); }
+.delta.down { color:var(--error); }
+.meta-right .sep { color:var(--dim); }
+.meta-right .info { margin-left:0; }
+
+/* Text selection in the preview (incl. the invisible layer over canvas output) */
+.viewport .art { cursor:text; }
+.viewport.space-pan, .viewport.space-pan .art { cursor:grab; }
+.viewport.dragging, .viewport.dragging .art { cursor:grabbing; }
+.viewport.space-pan .stage { user-select:none; }
+.art pre.sel-layer {
+  position:absolute; left:0; top:0; color:transparent;
+  user-select:text; -webkit-user-select:text;
+}
+.art pre.sel-layer::selection { background:rgba(154,167,179,.38); color:transparent; }
+
+/* Clipboard preview modal */
+.modal-back {
+  position:fixed; inset:0; z-index:180; background:rgba(5,6,8,.62);
+  display:grid; place-items:center; padding:16px;
+}
+.modal { width:min(980px, 100%); max-height:calc(100vh - 32px); display:flex; flex-direction:column; gap:10px; }
+.modal .card-head { margin-bottom:0; }
+.modal textarea {
+  width:100%; height:60vh; min-height:200px; resize:vertical;
+  background:var(--field); color:var(--text); border:1px solid var(--border); border-radius:8px;
+  padding:10px 12px; font:12px/1.2 var(--mono); white-space:pre; overflow:auto; tab-size:1;
+  font-kerning:none; font-variant-ligatures:none;
+}
+.modal-foot { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.modal-foot .hint { flex:1; min-width:200px; }
+
+/* =====================================================================
+   CSS 10. TOAST
+   ===================================================================== */
+.toast {
+  position:fixed; right:20px; bottom:20px; z-index:200; max-width:min(560px, calc(100vw - 40px));
+  background:var(--surface); border:1px solid var(--border-2); border-radius:10px;
+  padding:10px 14px; font-size:13.5px; display:flex; align-items:center; gap:8px;
+  opacity:0; transform:translateY(8px); pointer-events:none; transition:opacity .18s, transform .18s;
+}
+.toast.show { opacity:1; transform:none; }
+.toast.actionable.show { pointer-events:auto; }
+.toast .dot { background:var(--success); }
+.toast.err .dot { background:var(--error); }
+.toast-action {
+  appearance:none; flex:none; margin-left:4px; cursor:pointer;
+  background:none; border:1px solid var(--border-2); border-radius:6px; color:var(--text);
+  font:600 12.5px var(--sans); padding:3px 10px;
+}
+.toast-action:hover { background:var(--surface-2); }
+
+/* =====================================================================
+   CSS 11. RESPONSIVE + MOTION
+   ===================================================================== */
+@media (max-width: 999px) {
+  .wrap { padding:0 16px; }
+  .topbar { padding:10px 16px; }
+  .layout { grid-template-columns:minmax(0,1fr); gap:14px; }
+  .preview { order:-1; position:sticky; top:0; z-index:20; height:45vh; min-height:280px; }
+  .controls { position:static; max-height:none; overflow:visible; padding-right:0; margin-right:0; }
+  .vp-hint { display:none; }
+  .toolbar { padding:6px 10px; }
+  .meta-row { padding:6px 12px; font-size:11.5px; }
+}
+@media (max-width: 420px) {
+  .ctl-grid { grid-template-columns:1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { transition:none !important; animation:none !important; scroll-behavior:auto !important; }
+}
+</style>
+</head>
+
+<body>
+<!-- =====================================================================
+     HTML 1. TOP BAR
+     ===================================================================== -->
+<header class="topbar">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a class="brand" href="index.html">swcode</a>
+    <span class="sep" aria-hidden="true">/</span>
+    <span class="here" aria-current="page">ASCII Art Maker</span>
+  </nav>
+  <a class="gh" href="https://github.com/swc0de" target="_blank" rel="noopener" aria-label="swc0de on GitHub">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+  </a>
+</header>
+
+<main class="wrap">
+  <div class="page-head">
+    <h1>ASCII Art Maker</h1>
+    <p class="tagline">Turn any image into high-detail ASCII art. Everything runs in your browser — nothing is uploaded.</p>
+  </div>
+
+  <div class="layout">
+    <!-- ===================================================================
+         HTML 2. CONTROLS (left column)
+         =================================================================== -->
+    <aside class="controls" id="controls" aria-label="Settings">
+
+      <!-- Quick presets -->
+      <section class="card" aria-labelledby="presets-title">
+        <div class="card-head">
+          <h2 class="card-title" id="presets-title">Quick presets</h2>
+          <span class="hint">One click to a good result</span>
+        </div>
+        <div class="magic-wrap">
+          <div class="split-btn block" data-magic>
+            <button type="button" class="btn magic" data-magic-main="big">✨ Magic touch</button>
+            <button type="button" class="btn magic caret" data-magic-caret aria-haspopup="menu" aria-expanded="false" aria-controls="magicMenuBig" aria-label="Magic touch: choose what it may change">▾</button>
+            <div class="menu" id="magicMenuBig" role="menu" aria-label="Magic touch scope" data-magic-menu hidden></div>
+          </div>
+          <p class="magic-summary" id="magicSummary" hidden></p>
+        </div>
+        <div class="tiles" id="presetTiles" role="radiogroup" aria-labelledby="presets-title"></div>
+      </section>
+
+      <!-- ① Upload -->
+      <section class="card step" id="step1" aria-labelledby="s1-title">
+        <div class="step-head">
+          <div class="step-toggle static">
+            <span class="badge" aria-hidden="true">1</span>
+            <span class="step-text"><span class="step-title" id="s1-title">Upload image</span><span class="step-hint">Pick the picture you want to turn into text.</span></span>
+          </div>
+          <button type="button" class="link-btn" data-reset="image" title="Go back to the sample image">Reset</button>
+        </div>
+        <div class="step-body">
+          <div class="drop" id="drop" role="button" tabindex="0" aria-label="Choose an image file. You can also drop or paste an image.">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
+            <div class="drop-main">Drop an image, <u>click to browse</u>, or paste with <kbd>Ctrl</kbd>/<kbd>⌘</kbd>+<kbd>V</kbd></div>
+            <div class="drop-sub">PNG, JPG, WebP, GIF (first frame), BMP, SVG</div>
+          </div>
+          <input type="file" id="fileInput" hidden
+                 accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.bmp,.svg">
+          <div class="file-info">
+            <img id="fileThumb" alt="Thumbnail of the current image">
+            <div class="file-meta">
+              <div class="file-name" id="fileName">—</div>
+              <div class="file-dims" id="fileDims"></div>
+            </div>
+            <button type="button" class="btn sm" id="removeBtn">Remove</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ② Adjust image -->
+      <section class="card step" id="step2" aria-labelledby="s2-title">
+        <div class="step-head">
+          <button type="button" class="step-toggle" aria-expanded="true" aria-controls="step2-body">
+            <span class="badge" aria-hidden="true">2</span>
+            <span class="step-text"><span class="step-title" id="s2-title">Adjust image</span><span class="step-hint">Fine-tune the picture before it becomes characters.</span></span>
+            <svg class="chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+          </button>
+          <button type="button" class="link-btn" data-reset="adjust">Reset</button>
+        </div>
+        <div class="step-body" id="step2-body">
+          <div class="ctl-grid">
+            <div data-slider="brightness"></div>
+            <div data-slider="contrast"></div>
+            <div data-slider="gamma"></div>
+            <div data-slider="saturation"></div>
+            <div data-slider="sharpen"></div>
+            <div data-slider="blur"></div>
+          </div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" data-key="invert"> Invert <kbd>I</kbd></label>
+            <label class="check"><input type="checkbox" data-key="autoLevels"> Auto-levels <span class="info" tabindex="0" data-tip="Stretches the darkest and brightest parts of the image to full black and white. Great for flat or washed-out photos.">ⓘ</span></label>
+          </div>
+          <div class="field">
+            <span class="label" id="orient-label">Rotate &amp; flip</span>
+            <div class="btn-row" role="group" aria-labelledby="orient-label">
+              <button type="button" class="btn sm" id="rotL" aria-label="Rotate 90° left">⟲ 90°</button>
+              <button type="button" class="btn sm" id="rotR" aria-label="Rotate 90° right">⟳ 90°</button>
+              <button type="button" class="btn sm" id="flipHBtn" aria-pressed="false">⇋ Flip horizontal</button>
+              <button type="button" class="btn sm" id="flipVBtn" aria-pressed="false">⇵ Flip vertical</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="blankMode">Treat near-white/near-black as blank <span class="info" tabindex="0" data-tip="Removes a plain background: pixels close to white (or black) become empty space instead of characters. Transparent pixels are always blank.">ⓘ</span></label>
+            <select id="blankMode" data-key="blankMode">
+              <option value="off">Off</option>
+              <option value="white">Near-white is blank</option>
+              <option value="black">Near-black is blank</option>
+              <option value="both">Both</option>
+            </select>
+          </div>
+          <div data-slider="blankThreshold" data-show="blankMode!=off"></div>
+        </div>
+      </section>
+
+      <!-- ③ ASCII style -->
+      <section class="card step" id="step3" aria-labelledby="s3-title">
+        <div class="step-head">
+          <button type="button" class="step-toggle" aria-expanded="true" aria-controls="step3-body">
+            <span class="badge" aria-hidden="true">3</span>
+            <span class="step-text"><span class="step-title" id="s3-title">ASCII style</span><span class="step-hint">Choose size, characters, colours and font.</span></span>
+            <svg class="chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+          </button>
+          <button type="button" class="link-btn" data-reset="style">Reset</button>
+        </div>
+        <div class="step-body" id="step3-body">
+          <div class="subhead">Size</div>
+          <div data-slider="cols"></div>
+          <div class="field">
+            <label class="check"><input type="checkbox" data-key="autoAspect"> Match character shape to font automatically</label>
+          </div>
+          <div data-slider="aspect"></div>
+
+          <div class="subhead">Rendering</div>
+          <div class="field">
+            <span class="label" id="mode-label">Rendering mode</span>
+            <div class="seg" data-seg="mode" role="radiogroup" aria-labelledby="mode-label"></div>
+            <p class="hint" id="modeHint"></p>
+          </div>
+          <div class="ctl-grid" data-show="mode=edges">
+            <div data-slider="edgeThreshold" class="full"></div>
+            <label class="check full"><input type="checkbox" data-key="edgeBlend"> Blend over brightness <span class="info" tabindex="0" data-tip="Off: outlines only (sketch look). On: outlines drawn on top of the normal shaded ASCII.">ⓘ</span></label>
+          </div>
+          <div data-slider="brailleThreshold" data-show="mode=braille"></div>
+          <p class="hint" data-show="mode=shape">Shape match compares every printable ASCII character (or your Custom set) against each cell. Slower, but the most faithful text output.</p>
+          <p class="hint" data-show="mode=blocks">Uses ░▒▓█ shades plus ▀▄ half-blocks, so each character shows two pixels stacked.</p>
+
+          <div class="field" data-show="mode=brightness,edges,shape">
+            <span class="label" id="charset-label">Character set</span>
+            <div class="tiles" id="charsetTiles" role="radiogroup" aria-labelledby="charset-label"></div>
+          </div>
+          <div class="field" data-show="charset=custom">
+            <label for="customChars">Custom characters <span class="info" tabindex="0" data-tip="Type characters from lightest (usually a space) to densest. For Shape mode, any set of characters works.">ⓘ</span></label>
+            <input type="text" id="customChars" data-key="customChars" spellcheck="false" autocomplete="off">
+            <p class="hint warn" id="customWarn" role="status" hidden></p>
+          </div>
+          <label class="check" data-show="mode=brightness,edges,blocks,braille"><input type="checkbox" data-key="reverse"> Reverse ramp <span class="info" tabindex="0" data-tip="Swaps which areas get dense characters. Use it when the art looks like a photo negative.">ⓘ</span></label>
+
+          <div class="field" data-show="mode!=shape">
+            <label for="dither">Dithering <span class="info" tabindex="0" data-tip="Scatters characters to fake more shades than the character set has. Floyd–Steinberg is smooth, Atkinson is crisp, Ordered gives a regular pattern.">ⓘ</span></label>
+            <select id="dither" data-key="dither">
+              <option value="none">None</option>
+              <option value="fs">Floyd–Steinberg</option>
+              <option value="atkinson">Atkinson</option>
+              <option value="bayer4">Ordered (Bayer 4×4)</option>
+              <option value="bayer8">Ordered (Bayer 8×8)</option>
+            </select>
+          </div>
+          <div data-slider="ditherStrength" data-show="dither!=none"></div>
+
+          <div class="subhead">Colour</div>
+          <div class="field">
+            <label for="colorMode">Colour mode</label>
+            <select id="colorMode" data-key="colorMode">
+              <option value="mono">Monochrome</option>
+              <option value="full">Full colour</option>
+              <option value="gray">Grayscale</option>
+              <option value="palette">Palette-limited</option>
+              <option value="twotone">Custom two-tone</option>
+            </select>
+          </div>
+          <div class="field" data-show="colorMode=palette">
+            <span class="label" id="pal-label">Palette size <span class="info" tabindex="0" data-tip="Limits colours to a classic set: 2 = black &amp; white, 8 = basic RGB, 16 = VGA/ANSI, 256 = xterm.">ⓘ</span></span>
+            <div class="seg" data-seg="paletteSize" role="radiogroup" aria-labelledby="pal-label"></div>
+          </div>
+          <div class="colors" data-show="colorMode!=mono">
+            <div class="field" data-show="colorMode=twotone">
+              <label for="fg">Text colour</label>
+              <div class="color-field"><input type="color" id="fg" data-key="fg"><span class="hex" data-hex="fg"></span></div>
+            </div>
+            <div class="field">
+              <label for="bg">Background</label>
+              <div class="color-field"><input type="color" id="bg" data-key="bg"><span class="hex" data-hex="bg"></span></div>
+            </div>
+          </div>
+
+          <div class="subhead">Typography</div>
+          <div class="ctl-grid">
+            <div data-slider="fontSize"></div>
+            <div data-slider="lineHeight"></div>
+            <div data-slider="letterSpacing"></div>
+            <div class="field">
+              <label for="font">Font</label>
+              <select id="font" data-key="font"></select>
+            </div>
+          </div>
+          <label class="check"><input type="checkbox" data-key="bold"> Bold</label>
+        </div>
+      </section>
+
+      <!-- ④ Export -->
+      <section class="card step" id="step4" aria-labelledby="s4-title">
+        <div class="step-head">
+          <button type="button" class="step-toggle" aria-expanded="true" aria-controls="step4-body">
+            <span class="badge" aria-hidden="true">4</span>
+            <span class="step-text"><span class="step-title" id="s4-title">Export</span><span class="step-hint">Copy the text or download it as a file or image.</span></span>
+            <svg class="chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+          </button>
+          <button type="button" class="link-btn" data-reset="export">Reset</button>
+        </div>
+        <div class="step-body" id="step4-body">
+          <div class="copy-block">
+            <div class="split-btn block" id="copySplit">
+              <button type="button" class="btn primary" id="copyText"><span>Copy text</span><span class="tgt" id="copyTargetLabel"></span></button>
+              <button type="button" class="btn primary caret" id="copyCaret" aria-haspopup="menu" aria-expanded="false" aria-controls="copyMenu" aria-label="Copy for… choose where you will paste">▾</button>
+              <div class="menu" id="copyMenu" role="menu" aria-label="Copy for…" hidden></div>
+            </div>
+            <div class="copy-meta">
+              <div class="copy-hints" id="copyHints"></div>
+              <button type="button" class="link-btn" id="previewCopyBtn" aria-haspopup="dialog">Preview copy</button>
+            </div>
+          </div>
+          <div class="btn-grid">
+            <button type="button" class="btn sm" id="saveTxt">Save .txt</button>
+            <button type="button" class="btn sm" id="saveHtml">Save .html</button>
+            <button type="button" class="btn sm" id="savePng">Save PNG</button>
+            <button type="button" class="btn sm" id="saveSvg">Save SVG</button>
+            <button type="button" class="btn sm" id="copyImg" style="grid-column:1 / -1">Copy image to clipboard</button>
+          </div>
+
+          <div class="subhead">Text options</div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" data-key="stripTrailing"> Strip trailing spaces <span class="info" tabindex="0" data-tip="Applies to Plain text, Code block and Save .txt. Word / Docs, Social and HTML always pad every line to the full width instead, because some apps centre or justify text.">ⓘ</span></label>
+            <label class="check"><input type="checkbox" data-key="crlf"> Windows line endings (CRLF) for Save .txt <span class="info" tabindex="0" data-tip="Old Windows tools such as classic Notepad want \r\n line breaks. Copying always uses plain \n.">ⓘ</span></label>
+          </div>
+
+          <div class="subhead">Image options (PNG / SVG)</div>
+          <div class="field">
+            <span class="label" id="scale-label">PNG scale</span>
+            <div class="seg" data-seg="pngScale" role="radiogroup" aria-labelledby="scale-label"></div>
+          </div>
+          <div data-slider="pngPadding"></div>
+          <label class="check"><input type="checkbox" data-key="pngTransparent"> Transparent background</label>
+        </div>
+      </section>
+
+      <div class="controls-foot">
+        <button type="button" class="btn sm" id="presetSave">Export settings</button>
+        <button type="button" class="btn sm" id="presetLoad">Import settings</button>
+        <input type="file" id="presetInput" accept="application/json,.json" hidden>
+        <span class="spacer"></span>
+        <button type="button" class="link-btn" id="resetAll">Reset everything</button>
+      </div>
+    </aside>
+
+    <!-- ===================================================================
+         HTML 3. LIVE PREVIEW (right column)
+         =================================================================== -->
+    <section class="card preview" aria-labelledby="pv-title">
+      <div class="panel-head">
+        <h2 class="panel-title" id="pv-title">Live preview</h2>
+        <div class="meta-right">
+          <div class="status" id="status" data-kind="busy" role="status" aria-live="polite">
+            <span class="dot" aria-hidden="true"></span><span id="statusText">Loading…</span>
+          </div>
+          <button type="button" class="link-btn" id="magicCancel" hidden>Cancel</button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <div class="btn-row" role="group" aria-label="Zoom">
+          <button type="button" class="btn sm icon" id="zoomOut" aria-label="Zoom out">−</button>
+          <button type="button" class="btn sm" id="zoomFit">Fit</button>
+          <button type="button" class="btn sm" id="zoom100">100%</button>
+          <button type="button" class="btn sm icon" id="zoomIn" aria-label="Zoom in">+</button>
+        </div>
+        <span class="zoom-val" id="zoomVal" aria-live="off">100%</span>
+        <span class="spacer"></span>
+        <div class="split-btn" data-magic>
+          <button type="button" class="btn sm magic" data-magic-main="bar">✨ Magic touch</button>
+          <button type="button" class="btn sm magic caret" data-magic-caret aria-haspopup="menu" aria-expanded="false" aria-controls="magicMenuBar" aria-label="Magic touch: choose what it may change">▾</button>
+          <div class="menu" id="magicMenuBar" role="menu" aria-label="Magic touch scope" data-magic-menu hidden></div>
+        </div>
+        <button type="button" class="btn sm icon" id="pvCopy" aria-label="Copy text" title="Copy text">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="5.5" y="5.5" width="8.5" height="8.5" rx="1.5"/><path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"/></svg>
+        </button>
+        <button type="button" class="btn sm" id="compareBtn" aria-pressed="false" title="Show the original image under the ASCII">Compare</button>
+      </div>
+      <div class="viewport" id="viewport" tabindex="0"
+           aria-label="ASCII art preview. Press Ctrl or Cmd plus C to copy the text, R to reset the view. Hold Space and drag to pan.">
+        <div class="stage" id="stage">
+          <img class="orig" id="origImg" alt="">
+          <div class="art" id="art"></div>
+          <span class="cmp-label left" aria-hidden="true">Original</span>
+          <span class="cmp-label right" aria-hidden="true">ASCII</span>
+          <div class="divider" id="divider" role="slider" tabindex="0" aria-orientation="horizontal"
+               aria-label="Compare split. Original on the left, ASCII on the right. Drag or use the arrow keys."
+               aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"><span class="grip" aria-hidden="true">‹›</span></div>
+        </div>
+        <div class="vp-hint" aria-hidden="true">Ctrl/⌘ + scroll to zoom · Space + drag to pan · drag to select</div>
+      </div>
+      <div class="meta-row">
+        <span id="meta">—</span>
+        <span class="meta-right">
+          <span id="clarity" class="clarity">Clarity —</span><span id="clarityDelta" class="delta" title="Change since the previous render"></span>
+          <span class="info" tabindex="0" data-tip="How closely the ASCII, seen from normal viewing distance, matches your ORIGINAL picture: overall structure (SSIM), outlines, and detail lost to big blank or solid areas, plus colour accuracy in colour modes. 0–100, higher is clearer. Logos on a plain white or black background are compared with that background matched to your output background.">ⓘ</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span id="timing"></span>
+        </span>
+      </div>
+    </section>
+  </div>
+
+  <footer class="site-footer">
+    © 2026 swcode · <a href="index.html">Home</a> · <a href="https://github.com/swc0de" target="_blank" rel="noopener">GitHub</a>
+  </footer>
+</main>
+
+<div class="tip" id="tip" role="tooltip" hidden></div>
+<div class="toast" id="toast" role="status" aria-live="polite"><span class="dot" aria-hidden="true"></span><span id="toastText"></span><button type="button" class="toast-action" id="toastAction" hidden></button></div>
+
+<!-- Clipboard preview: shows the exact text the Copy button will put on the clipboard -->
+<div class="modal-back" id="pcModal" hidden>
+  <div class="card modal" role="dialog" aria-modal="true" aria-labelledby="pcTitle" aria-describedby="pcDesc">
+    <div class="card-head">
+      <h2 class="card-title" id="pcTitle">Clipboard preview</h2>
+      <button type="button" class="link-btn" id="pcClose" aria-label="Close preview">✕</button>
+    </div>
+    <p class="hint" id="pcDesc"></p>
+    <textarea id="pcText" readonly wrap="off" spellcheck="false" aria-label="Exact text that will be copied"></textarea>
+    <div class="modal-foot">
+      <span class="hint">This is exactly what goes on the clipboard. You can also select part of it and copy by hand.</span>
+      <button type="button" class="btn sm" id="pcSelect">Select all</button>
+      <button type="button" class="btn sm primary" id="pcCopy">Copy</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+   JS 0. TINY HELPERS
+   ===================================================================== */
+const $  = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const HEX = Array.from({ length:256 }, (_, i) => i.toString(16).padStart(2, '0'));
+const fmtInt = n => Math.round(n).toLocaleString('en-US');
+const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+function makeCanvas(w, h) { const c = document.createElement('canvas'); c.width = Math.max(1, w | 0); c.height = Math.max(1, h | 0); return c; }
+function hexLum(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255;
+}
+
+/* =====================================================================
+   JS 1. STATE & CONSTANTS
+   ===================================================================== */
+const STORAGE_KEY = 'swcode.ascii-art-maker.v1';
+const THEME_FG = '#e6e9ed', THEME_BG = '#0c0e11';
+
+// Classic 70-character ramp (Paul Bourke), stored light → dense.
+const DETAILED_RAMP = '$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,"^`\'. '.split('').reverse().join('');
+
+const CHARSETS = {
+  standard: { label:'Standard', ramp:' .:-=+*#%@',  sample:'.:-=+*#%@' },
+  detailed: { label:'Detailed', ramp:DETAILED_RAMP, sample:'`^:;Il1tUZ#@' },
+  simple:   { label:'Simple',   ramp:' .:-+#',      sample:' .:-+#' },
+  blocks:   { label:'Blocks',   ramp:' ░▒▓█',       sample:'░▒▓█' },
+  binary:   { label:'Binary',   ramp:' 10',         sample:'0110 01' },
+  custom:   { label:'Custom',   ramp:null,          sample:'' },
+};
+
+const FONTS = {
+  jetbrains: { label:'JetBrains Mono', stack:'"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace' },
+  courier:   { label:'Courier',        stack:'"Courier New", Courier, monospace' },
+  consolas:  { label:'Consolas',       stack:'Consolas, "Lucida Console", Menlo, monospace' },
+  system:    { label:'System mono',    stack:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace' },
+};
+
+// sx/sy = how many sampled pixels feed one character cell.
+const MODES = {
+  brightness: { label:'Brightness', sample:'@#+:', sx:1, sy:1, hint:'Classic: each character is picked by how bright its area is.' },
+  edges:      { label:'Edges',      sample:'/|\\_', sx:2, sy:2, hint:'Finds outlines and draws them with / \\ | - _ along their direction.' },
+  blocks:     { label:'Blocks',     sample:'▀▄█',   sx:1, sy:2, hint:'Solid shaded blocks — half-blocks double the vertical detail.' },
+  braille:    { label:'Braille',    sample:'⣿⡇',    sx:2, sy:4, hint:'Each character is a 2×4 grid of dots — the sharpest detail.' },
+  shape:      { label:'Shape',      sample:'Aa/',   sx:4, sy:8, hint:'Picks the character whose shape best matches each cell — the most detailed text mode.' },
+};
+
+const pct = v => Math.round(v) + '%';
+const sgn = v => (v > 0 ? '+' : '') + Math.round(v);
+const fx  = (d, u = '') => v => Number(v).toFixed(d) + u;
+
+const SLIDERS = {
+  brightness:      { label:'Brightness', min:-100, max:100, step:1, fmt:sgn },
+  contrast:        { label:'Contrast', min:-100, max:100, step:1, fmt:sgn },
+  gamma:           { label:'Gamma', min:0.2, max:3, step:0.05, fmt:fx(2), tip:'Brightens or darkens the mid-tones while keeping pure black and white unchanged.' },
+  saturation:      { label:'Saturation', min:0, max:200, step:1, fmt:pct, tip:'Colour intensity. Mostly visible in colour modes.' },
+  sharpen:         { label:'Sharpen', min:0, max:100, step:1, fmt:pct, tip:'Boosts fine edges so small details survive the conversion to characters.' },
+  blur:            { label:'Blur', min:0, max:10, step:0.5, fmt:fx(1), tip:'Softens noise and texture for calmer, cleaner output.' },
+  blankThreshold:  { label:'Blank threshold', min:0, max:50, step:1, fmt:pct, tip:'How close to white/black a pixel must be to count as empty background.' },
+  cols:            { label:'Output width', min:20, max:600, step:1, fmt:v => v + ' chars', tip:'Number of characters per line. More = more detail, but a bigger result.' },
+  aspect:          { label:'Character aspect ratio', min:0.3, max:1.2, step:0.01, fmt:fx(2), tip:'Width ÷ height of one character cell. Characters are taller than wide, so the image is squashed vertically to keep its proportions. 0.5 suits most monospace fonts.' },
+  edgeThreshold:   { label:'Edge threshold', min:0, max:100, step:1, fmt:v => String(Math.round(v)), tip:'Higher = only strong outlines. Lower = more detail, but also more noise.' },
+  brailleThreshold:{ label:'Dot threshold', min:0, max:100, step:1, fmt:pct, tip:'How bright an area must be before a braille dot is drawn.' },
+  ditherStrength:  { label:'Dither strength', min:0, max:100, step:1, fmt:pct },
+  fontSize:        { label:'Font size', min:4, max:24, step:1, fmt:v => v + 'px' },
+  lineHeight:      { label:'Line height', min:0.8, max:2, step:0.05, fmt:fx(2) },
+  letterSpacing:   { label:'Letter spacing', min:-2, max:4, step:0.1, fmt:fx(1, 'px') },
+  pngPadding:      { label:'Padding', min:0, max:64, step:1, fmt:v => v + 'px' },
+};
+
+const DEFAULTS = {
+  // ② Adjust
+  brightness:0, contrast:0, gamma:1, saturation:100, sharpen:0, blur:0,
+  invert:false, autoLevels:false, rotate:0, flipH:false, flipV:false,
+  blankMode:'off', blankThreshold:10,
+  // ③ Style
+  cols:160, autoAspect:true, aspect:0.5, mode:'brightness',
+  edgeThreshold:30, edgeBlend:true, brailleThreshold:50,
+  charset:'detailed', customChars:' .:-=+*#%@', reverse:false,
+  dither:'none', ditherStrength:100,
+  colorMode:'mono', paletteSize:16, fg:'#e6e9ed', bg:'#0c0e11',
+  fontSize:8, lineHeight:1.2, letterSpacing:0, font:'jetbrains', bold:false,
+  // ④ Export (mdWrap was retired: old saves map it to copyTarget:'code' in sanitize())
+  pngScale:2, pngTransparent:false, pngPadding:16, stripTrailing:true,
+  copyTarget:'plain', crlf:false,
+  // UI preferences (never re-render, not touched by the section Reset links)
+  magicScope:'tune',
+};
+
+const GROUPS = {
+  adjust: ['brightness','contrast','gamma','saturation','sharpen','blur','invert','autoLevels','rotate','flipH','flipV','blankMode','blankThreshold'],
+  style:  ['cols','autoAspect','aspect','mode','edgeThreshold','edgeBlend','brailleThreshold','charset','customChars','reverse','dither','ditherStrength','colorMode','paletteSize','fg','bg','fontSize','lineHeight','letterSpacing','font','bold'],
+  export: ['pngScale','pngTransparent','pngPadding','stripTrailing','copyTarget','crlf'],
+  prefs:  ['magicScope'],
+};
+
+const ENUMS = {
+  mode: Object.keys(MODES), charset: Object.keys(CHARSETS), font: Object.keys(FONTS),
+  colorMode: ['mono','full','gray','palette','twotone'],
+  dither: ['none','fs','atkinson','bayer4','bayer8'],
+  blankMode: ['off','white','black','both'],
+  paletteSize: [2,8,16,256], pngScale: [1,2,3,4], rotate: [0,90,180,270],
+  copyTarget: ['plain','code','rich','social','html'],
+  magicScope: ['tune','full'],
+};
+
+const COLOR_LABELS = { mono:'', full:'Full colour', gray:'Grayscale', palette:'Palette', twotone:'Two-tone' };
+
+// Quick presets: each one resets the "style" group, then applies its overrides.
+const PRESETS = {
+  classic: { label:'Classic', sample:' .:-=+*#%@', s:{ mode:'brightness', charset:'standard', cols:120 } },
+  high:    { label:'High detail', sample:'`^:;Il1tUZ#@', s:{ mode:'brightness', charset:'detailed', cols:220, fontSize:6, dither:'fs', ditherStrength:50 } },
+  blocks:  { label:'Blocks', sample:' ░▒▓█▀▄', s:{ mode:'blocks', cols:140, lineHeight:1 } },
+  braille: { label:'Braille', sub:'sharpest', sample:'⣿⣷⡿⠟⠋⣠', s:{ mode:'braille', cols:180, lineHeight:1, dither:'atkinson' } },
+  edges:   { label:'Edges / Sketch', sample:' /‾\\_|/ ', s:{ mode:'edges', edgeBlend:false, edgeThreshold:22, cols:140 } },
+  matrix:  { label:'Matrix', sample:'01 1 0110', color:'#3dff7a', s:{ mode:'brightness', charset:'binary', colorMode:'twotone', fg:'#3dff7a', bg:'#000000', dither:'fs', ditherStrength:80, cols:140 } },
+  amber:   { label:'Retro terminal', sample:'>_ .:*#%', color:'#ffb000', s:{ mode:'brightness', charset:'standard', colorMode:'twotone', fg:'#ffb000', bg:'#160f00', cols:120, bold:true } },
+  colour:  { label:'Colour', sample:'@%#*+=-', rainbow:true, s:{ mode:'brightness', charset:'detailed', colorMode:'full', bg:'#0c0e11', cols:160, saturation:120 } },
+};
+
+/** Validate an untrusted settings object (localStorage or imported JSON). */
+function sanitize(o) {
+  const out = {};
+  if (!o || typeof o !== 'object') return out;
+  for (const k in DEFAULTS) {
+    if (!(k in o)) continue;
+    const v = o[k], d = DEFAULTS[k];
+    if (typeof v !== typeof d) continue;
+    if (ENUMS[k]) { if (ENUMS[k].includes(v)) out[k] = v; continue; }
+    if (typeof d === 'number') { if (!Number.isFinite(v)) continue; const sl = SLIDERS[k]; out[k] = sl ? clamp(v, sl.min, sl.max) : v; continue; }
+    if (k === 'fg' || k === 'bg') { if (/^#[0-9a-f]{6}$/i.test(v)) out[k] = v.toLowerCase(); continue; }
+    if (k === 'customChars') { out[k] = v.slice(0, 256); continue; }
+    out[k] = v;
+  }
+  if ('preset' in o && (o.preset === null || PRESETS[o.preset])) out.preset = o.preset;
+  // Retired "Wrap in Markdown code block" option → the Code block copy target.
+  if (o.mdWrap === true && !('copyTarget' in out)) out.copyTarget = 'code';
+  return out;
+}
+
+function loadSettings() {
+  const s = { ...DEFAULTS, preset:null };
+  try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) Object.assign(s, sanitize(JSON.parse(raw))); } catch (e) { /* storage blocked or corrupt */ }
+  return s;
+}
+const state = loadSettings();
+const writeSettings = () => { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {} };
+const saveSettings = debounce(writeSettings, 200);
+window.addEventListener('pagehide', writeSettings);   // flush the debounced save when leaving
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') writeSettings(); });
+
+/** Colours used for output: { fg, bg } */
+function outColors() {
+  if (state.colorMode === 'mono') return { fg:THEME_FG, bg:THEME_BG };
+  return { fg: state.colorMode === 'twotone' ? state.fg : THEME_FG, bg: state.bg };
+}
+function currentRamp() {
+  if (state.charset === 'custom') return customRamp();
+  return CHARSETS[state.charset].ramp;
+}
+
+/* Characters that must never reach the output: tabs/controls, zero-width and
+   bidi marks, variation selectors, combining marks, emoji, astral and East-Asian
+   wide characters. (JS regexes can't test East_Asian_Width, hence the ranges;
+   filterCustom() also measures every glyph, which catches the rest.) */
+const UNSAFE_SRC = '[\\t\\u0000-\\u0009\\u000b-\\u001f\\u007f-\\u009f\\u00ad\\u034f\\u061c\\u115f\\u1160\\u17b4\\u17b5\\u180b-\\u180f\\u200b-\\u200f\\u2028-\\u202e\\u2060-\\u206f\\u3164\\ufe00-\\ufe0f\\ufeff\\uffa0]'
+  + '|\\p{M}|\\p{Extended_Pictographic}|[\\u{10000}-\\u{10ffff}]'
+  + '|[\\u1100-\\u115f\\u2e80-\\u303e\\u3041-\\u33ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\ua000-\\ua4cf\\uac00-\\ud7a3\\uf900-\\ufaff\\ufe30-\\ufe4f\\uff00-\\uff60\\uffe0-\\uffe6]';
+const UNSAFE_ONE = new RegExp(UNSAFE_SRC, 'u');
+const UNSAFE_ALL = new RegExp(UNSAFE_SRC, 'gu');
+
+/** Split typed Custom characters into the ones that keep the grid and the ones that don't. */
+let customCache = { key:'', v:null };
+function filterCustom(str) {
+  const met = fontMetrics(), key = metCache.key + '\u0001' + str;
+  if (customCache.key === key) return customCache.v;
+  measureCtx.font = met.font;
+  const kept = [], removed = [];
+  for (const ch of str) {
+    const bad = ch.length !== 1 || UNSAFE_ONE.test(ch)
+      || Math.abs(measureCtx.measureText(ch).width - met.charW) > met.charW * 0.02;   // same test as glyphsUniform()
+    if (bad) { if (!removed.includes(ch)) removed.push(ch); } else kept.push(ch);
+  }
+  const v = { value:kept.join(''), removed };
+  customCache = { key, v };
+  return v;
+}
+function customRamp() { const v = filterCustom(state.customChars).value; return v.length ? v : ' '; }
+
+/* Font metrics (cached; invalidated when webfonts finish loading) */
+let fontEpoch = 0;
+const measureCtx = makeCanvas(8, 8).getContext('2d');
+let metCache = { key:'', v:null };
+function fontMetrics() {
+  const f = FONTS[state.font] || FONTS.jetbrains;
+  const weight = state.bold ? 700 : 400;
+  const font = `${weight} ${state.fontSize}px ${f.stack}`;
+  const key = `${font}|${state.lineHeight}|${state.letterSpacing}|${fontEpoch}`;
+  if (metCache.key === key) return metCache.v;
+  measureCtx.font = font;
+  const charW = measureCtx.measureText('MMMMMMMMMM').width / 10 || state.fontSize * 0.6;
+  const v = {
+    font, stack:f.stack, weight, size:state.fontSize, charW,
+    cellW: Math.max(charW * 0.3, charW + state.letterSpacing),
+    lineH: state.fontSize * state.lineHeight,
+  };
+  metCache = { key, v };
+  return v;
+}
+/**
+ * Many monospace fonts (including the Google Fonts subset of JetBrains Mono) lack braille
+ * or block glyphs; the browser then falls back to a font with different widths, which
+ * breaks the grid inside a <pre>. Detect that so we can draw on a fixed grid instead.
+ */
+const GLYPH_PROBES = { braille:'⣿⠀⡇', blocks:'█▀▄░▒▓' };
+let uniformCache = { key:'', v:true };
+function glyphsUniform(mode = state.mode) {
+  const probe = GLYPH_PROBES[mode]; if (!probe) return true;
+  const met = fontMetrics(), key = metCache.key + '|' + mode;
+  if (uniformCache.key === key) return uniformCache.v;
+  measureCtx.font = met.font;
+  const v = Array.from(probe).every(ch => Math.abs(measureCtx.measureText(ch).width - met.charW) <= met.charW * 0.02);
+  uniformCache = { key, v };
+  return v;
+}
+
+function effectiveAspect() {
+  if (!state.autoAspect) return state.aspect;
+  const m = fontMetrics();
+  return clamp(m.cellW / m.lineH, 0.2, 2);
+}
+
+/* =====================================================================
+   JS 2. IMAGE LOADING
+   ===================================================================== */
+let srcCanvas = null;          // decoded source (max 2048px)
+let orientCanvas = null;       // source after rotate/flip
+let chain = [];                // halving chain of orientCanvas for high-quality downscaling
+let compareUrl = null;         // blob URL of orientCanvas for the Compare view
+let orientEpoch = 0;           // bumps whenever orientCanvas changes (keys the worker's clarity reference cache)
+const srcInfo = { name:'', w:0, h:0, sample:true };
+
+function isImageFile(f) {
+  return f && (/^image\//.test(f.type) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(f.name || ''));
+}
+function loadImg(url) {
+  return new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+}
+async function loadFile(file) {
+  if (!file) return;
+  if (!isImageFile(file)) { toast('That file is not a supported image.', true); return; }
+  setStatus('busy', 'Loading image…');
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImg(url);
+    const isSvg = /svg/.test(file.type) || /\.svg$/i.test(file.name || '');
+    let w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h) { w = 1024; h = 1024; }                        // SVG without intrinsic size
+    if (isSvg && Math.max(w, h) < 1024) { const k = 1024 / Math.max(w, h); w *= k; h *= k; } // rasterise SVGs crisply
+    setSource(img, file.name || 'pasted-image.png', w, h, false, img.naturalWidth || w, img.naturalHeight || h);
+  } catch (e) {
+    setStatus('err', 'Could not read that image.');
+    toast('Could not read that image.', true);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Draw any drawable into srcCanvas (capped at 2048px), then rebuild everything downstream. */
+function setSource(drawable, name, w, h, isSample, origW = w, origH = h) {
+  if (magic.running) cancelMagic('Magic touch cancelled — new image.');
+  magic.confirm = null; clarityPrev = null; setMagicSummary('');
+  const k = Math.min(1, 2048 / Math.max(w, h));
+  const c = makeCanvas(Math.round(w * k), Math.round(h * k));
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(drawable, 0, 0, c.width, c.height);
+  srcCanvas = c;
+  Object.assign(srcInfo, { name, w:Math.round(origW), h:Math.round(origH), sample:isSample });
+
+  // thumbnail + file info
+  const t = makeCanvas(104, 104), tc = t.getContext('2d');
+  const s = Math.max(104 / c.width, 104 / c.height);
+  tc.imageSmoothingQuality = 'high';
+  tc.drawImage(c, (104 - c.width * s) / 2, (104 - c.height * s) / 2, c.width * s, c.height * s);
+  $('#fileThumb').src = t.toDataURL('image/png');
+  $('#fileName').textContent = isSample ? 'Sample image' : name;
+  $('#fileDims').textContent = `${srcInfo.w} × ${srcInfo.h} px${isSample ? ' · built-in' : ''}`;
+  $('#removeBtn').hidden = isSample;
+
+  rebuildOrient();
+  view.fit = true;
+  scheduleRender(true);
+}
+
+/** Apply rotate/flip and build the downscale chain. */
+function rebuildOrient() {
+  if (!srcCanvas) return;
+  const r = ((state.rotate % 360) + 360) % 360, sw = srcCanvas.width, sh = srcCanvas.height;
+  const swap = r === 90 || r === 270;
+  const c = makeCanvas(swap ? sh : sw, swap ? sw : sh), ctx = c.getContext('2d');
+  ctx.translate(c.width / 2, c.height / 2);
+  ctx.scale(state.flipH ? -1 : 1, state.flipV ? -1 : 1);   // flips are in screen space…
+  ctx.rotate(r * Math.PI / 180);                           // …applied after rotation
+  ctx.drawImage(srcCanvas, -sw / 2, -sh / 2);
+  orientCanvas = c; orientEpoch++;
+
+  chain = [c];
+  let cur = c;
+  while (cur.width >= 64 && cur.height >= 64) {
+    const n = makeCanvas(cur.width >> 1, cur.height >> 1), nc = n.getContext('2d');
+    nc.imageSmoothingQuality = 'high';
+    nc.drawImage(cur, 0, 0, n.width, n.height);
+    chain.push(n); cur = n;
+  }
+  if (compareUrl) { URL.revokeObjectURL(compareUrl); compareUrl = null; }
+  if (compareOn) updateCompareImage();
+}
+
+/** Resample the oriented image to exactly sw×sh pixels. */
+const sampleCanvas = makeCanvas(1, 1);
+const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently:true });
+function sampleImage(sw, sh) {
+  let src = chain[0];
+  for (const c of chain) { if (c.width >= sw && c.height >= sh) src = c; else break; }
+  sampleCanvas.width = sw; sampleCanvas.height = sh;
+  sampleCtx.clearRect(0, 0, sw, sh);
+  sampleCtx.imageSmoothingEnabled = true;
+  sampleCtx.imageSmoothingQuality = 'high';
+  sampleCtx.drawImage(src, 0, 0, sw, sh);
+  return sampleCtx.getImageData(0, 0, sw, sh);
+}
+
+/** Built-in sample: gradient sky, shaded sphere, ring, triangle and text. */
+function loadSample() {
+  const W = 720, H = 480, c = makeCanvas(W, H), x = c.getContext('2d');
+  let g = x.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#04060a'); g.addColorStop(0.6, '#0f1830'); g.addColorStop(1, '#2a1f45');
+  x.fillStyle = g; x.fillRect(0, 0, W, H);
+  // horizon glow
+  g = x.createLinearGradient(0, 300, 0, H);
+  g.addColorStop(0, 'rgba(255,170,90,0)'); g.addColorStop(1, 'rgba(255,170,90,.22)');
+  x.fillStyle = g; x.fillRect(0, 300, W, 180);
+  // sphere
+  g = x.createRadialGradient(170, 190, 12, 215, 255, 165);
+  g.addColorStop(0, '#fff6d8'); g.addColorStop(0.25, '#ffc65a'); g.addColorStop(0.7, '#d0531f'); g.addColorStop(1, '#2a0d06');
+  x.fillStyle = g; x.beginPath(); x.arc(215, 260, 160, 0, Math.PI * 2); x.fill();
+  // ring
+  x.strokeStyle = '#5ad1e8'; x.lineWidth = 22; x.beginPath(); x.arc(560, 135, 70, 0, Math.PI * 2); x.stroke();
+  // triangle
+  g = x.createLinearGradient(430, 260, 690, 440);
+  g.addColorStop(0, '#ff8aa0'); g.addColorStop(1, '#6a1838');
+  x.fillStyle = g; x.beginPath(); x.moveTo(420, 445); x.lineTo(565, 245); x.lineTo(705, 445); x.closePath(); x.fill();
+  // stripes
+  for (let i = 0; i < 6; i++) { x.fillStyle = `rgba(230,233,237,${0.15 + i * 0.14})`; x.fillRect(400 + i * 22, 30, 12, 40); }
+  // text
+  x.fillStyle = '#ffffff'; x.font = '700 48px Inter, system-ui, sans-serif'; x.textBaseline = 'top';
+  x.fillText('ASCII', 28, 22);
+  setSource(c, 'sample.png', W, H, true);
+}
+
+/* =====================================================================
+   JS 3. PREPROCESSING + RENDERERS (the "core")
+   This function is self-contained: it is stringified into a Web Worker
+   built from a Blob, and also used directly as a main-thread fallback.
+   ===================================================================== */
+function asciiCore() {
+  const BRAILLE_BITS = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]]; // [row][col]
+  const VGA = [[0,0,0],[128,0,0],[0,128,0],[128,128,0],[0,0,128],[128,0,128],[0,128,128],[192,192,192],
+               [128,128,128],[255,0,0],[0,255,0],[255,255,0],[0,0,255],[255,0,255],[0,255,255],[255,255,255]];
+  const bayerCache = {}, palCache = {};
+  let glyphCache = { key:null };
+
+  const lum = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+  /** Normalised Bayer matrix, values in (-0.5, 0.5). */
+  function bayer(n) {
+    if (bayerCache[n]) return bayerCache[n];
+    let m = [0], s = 1;
+    while (s < n) {
+      const s2 = s * 2, nm = new Array(s2 * s2);
+      for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) {
+        const v = m[y * s + x] * 4;
+        nm[y * s2 + x] = v; nm[y * s2 + x + s] = v + 2;
+        nm[(y + s) * s2 + x] = v + 3; nm[(y + s) * s2 + x + s] = v + 1;
+      }
+      m = nm; s = s2;
+    }
+    const N = n * n, out = new Float32Array(N);
+    for (let i = 0; i < N; i++) out[i] = (m[i] + 0.5) / N - 0.5;
+    return (bayerCache[n] = out);
+  }
+
+  /** Quantise values (≈0..1) into `levels` steps, with optional dithering. */
+  function quantize(v, W, H, levels, method, strength, mask) {
+    const out = new Uint16Array(W * H), L1 = levels - 1;
+    if (L1 <= 0) return out;
+    if (method === 'fs' || method === 'atkinson') {
+      const e = new Float32Array(v), fs = method === 'fs';
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (mask && mask[i]) continue;
+        let old = e[i]; old = old < -0.5 ? -0.5 : old > 1.5 ? 1.5 : old;
+        let q = Math.round(old * L1); q = q < 0 ? 0 : q > L1 ? L1 : q;
+        out[i] = q;
+        const err = (old - q / L1) * strength;
+        if (!err) continue;
+        if (fs) {
+          if (x + 1 < W) e[i + 1] += err * 0.4375;
+          if (y + 1 < H) {
+            if (x > 0) e[i + W - 1] += err * 0.1875;
+            e[i + W] += err * 0.3125;
+            if (x + 1 < W) e[i + W + 1] += err * 0.0625;
+          }
+        } else {
+          const a = err / 8;
+          if (x + 1 < W) e[i + 1] += a;
+          if (x + 2 < W) e[i + 2] += a;
+          if (y + 1 < H) { if (x > 0) e[i + W - 1] += a; e[i + W] += a; if (x + 1 < W) e[i + W + 1] += a; }
+          if (y + 2 < H) e[i + 2 * W] += a;
+        }
+      }
+    } else if (method === 'bayer4' || method === 'bayer8') {
+      const n = method === 'bayer4' ? 4 : 8, M = bayer(n);
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (mask && mask[i]) continue;
+        let q = Math.round(v[i] * L1 + M[(y % n) * n + (x % n)] * strength);
+        out[i] = q < 0 ? 0 : q > L1 ? L1 : q;
+      }
+    } else {
+      for (let i = 0; i < W * H; i++) {
+        if (mask && mask[i]) continue;
+        let q = Math.round(v[i] * L1);
+        out[i] = q < 0 ? 0 : q > L1 ? L1 : q;
+      }
+    }
+    return out;
+  }
+
+  /** Separable box blur with clamped edges. */
+  function boxBlur(src, w, h, r) {
+    const tmp = new Float32Array(src.length), out = new Float32Array(src.length), div = 2 * r + 1;
+    for (let y = 0; y < h; y++) {
+      const row = y * w; let acc = 0;
+      for (let k = -r; k <= r; k++) acc += src[row + (k < 0 ? 0 : k >= w ? w - 1 : k)];
+      for (let x = 0; x < w; x++) {
+        tmp[row + x] = acc / div;
+        const add = x + r + 1 >= w ? w - 1 : x + r + 1, rem = x - r < 0 ? 0 : x - r;
+        acc += src[row + add] - src[row + rem];
+      }
+    }
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let k = -r; k <= r; k++) acc += tmp[(k < 0 ? 0 : k >= h ? h - 1 : k) * w + x];
+      for (let y = 0; y < h; y++) {
+        out[y * w + x] = acc / div;
+        const add = y + r + 1 >= h ? h - 1 : y + r + 1, rem = y - r < 0 ? 0 : y - r;
+        acc += tmp[add * w + x] - tmp[rem * w + x];
+      }
+    }
+    return out;
+  }
+  function sharpen(ch, w, h, amt) {
+    const b = boxBlur(ch, w, h, 1);
+    for (let i = 0; i < ch.length; i++) ch[i] += amt * (ch[i] - b[i]);
+    return ch;
+  }
+
+  function palette(n) {
+    if (palCache[n]) return palCache[n];
+    let p = [];
+    if (n === 2) p = [[0,0,0],[255,255,255]];
+    else if (n === 8) { for (let i = 0; i < 8; i++) p.push([(i & 1) * 255, (i >> 1 & 1) * 255, (i >> 2 & 1) * 255]); }
+    else if (n === 16) p = VGA;
+    else {
+      p = VGA.slice();
+      const lv = [0, 95, 135, 175, 215, 255];
+      for (let r = 0; r < 6; r++) for (let g = 0; g < 6; g++) for (let b = 0; b < 6; b++) p.push([lv[r], lv[g], lv[b]]);
+      for (let i = 0; i < 24; i++) { const v = 8 + i * 10; p.push([v, v, v]); }
+    }
+    return (palCache[n] = p);
+  }
+  function nearest(p, r, g, b) {
+    let best = Infinity, bi = 0;
+    for (let i = 0; i < p.length; i++) {
+      const dr = r - p[i][0], dg = g - p[i][1], db = b - p[i][2];
+      const d = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+      if (d < best) { best = d; bi = i; }
+    }
+    return p[bi];
+  }
+
+  /** Sort glyph bitmaps by mean coverage (for pruned nearest-shape search). */
+  function prepGlyphs(gl) {
+    if (glyphCache.key === gl.key) return glyphCache;
+    const n = gl.chars.length, D = gl.dim, idx = Array.from({ length:n }, (_, i) => i);
+    idx.sort((a, b) => gl.means[a] - gl.means[b]);
+    const means = new Float32Array(n), bm = new Float32Array(n * D), chars = new Array(n);
+    idx.forEach((src, j) => {
+      means[j] = gl.means[src]; chars[j] = gl.chars[src];
+      bm.set(gl.bitmaps.subarray(src * D, src * D + D), j * D);
+    });
+    return (glyphCache = { key:gl.key, n, D, means, bm, chars });
+  }
+
+  /* ---------- main entry ---------- */
+  function process(m) {
+    const t0 = performance.now();
+    const o = m.o, w = m.w, h = m.h, n = w * h, cols = m.cols, rows = m.rows, sx = m.sx, sy = m.sy;
+    const px = new Uint8ClampedArray(m.buffer);
+    let R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n);
+    const blank = new Uint8Array(n);
+
+    // 1. decode + "blank" detection (transparent / near-white / near-black)
+    const bt = o.blankThreshold / 100, bm = o.blankMode;
+    for (let i = 0, j = 0; i < n; i++, j += 4) {
+      const r = px[j] / 255, g = px[j + 1] / 255, b = px[j + 2] / 255;
+      R[i] = r; G[i] = g; B[i] = b;
+      if (px[j + 3] < 128) { blank[i] = 1; continue; }
+      if (bm !== 'off') {
+        const l = lum(r, g, b);
+        if ((bm === 'white' || bm === 'both') && l >= 1 - bt) blank[i] = 1;
+        else if ((bm === 'black' || bm === 'both') && l <= bt) blank[i] = 1;
+      }
+    }
+
+    // 2. blur / sharpen
+    if (o.blur > 0) {
+      const r = Math.max(1, Math.round(o.blur * sx * 0.5));
+      R = boxBlur(boxBlur(R, w, h, r), w, h, r); G = boxBlur(boxBlur(G, w, h, r), w, h, r); B = boxBlur(boxBlur(B, w, h, r), w, h, r);
+    }
+    if (o.sharpen > 0) { const a = o.sharpen / 100 * 2; R = sharpen(R, w, h, a); G = sharpen(G, w, h, a); B = sharpen(B, w, h, a); }
+
+    // 3. auto-levels (0.5% / 99.5% percentiles of luminance)
+    let lo = 0, hi = 1;
+    if (o.autoLevels) {
+      const hist = new Uint32Array(256); let cnt = 0;
+      for (let i = 0; i < n; i++) {
+        if (blank[i]) continue;
+        let l = lum(R[i], G[i], B[i]); l = l < 0 ? 0 : l > 1 ? 1 : l;
+        hist[(l * 255) | 0]++; cnt++;
+      }
+      if (cnt) {
+        const cut = cnt * 0.005; let acc = 0, a = 0, b = 255;
+        for (; a < 255; a++) { acc += hist[a]; if (acc > cut) break; }
+        acc = 0;
+        for (; b > 0; b--) { acc += hist[b]; if (acc > cut) break; }
+        if (b - a > 4) { lo = a / 255; hi = (b + 1) / 255; }
+      }
+    }
+
+    // 4. tone: brightness → contrast → saturation → gamma → invert, then "ink"
+    const span = hi - lo, bri = o.brightness / 200;
+    const c = Math.min(99, Math.max(-100, o.contrast)), cf = Math.tan((c / 100 + 1) * Math.PI / 4);
+    const sat = o.saturation / 100, inv = o.invert;
+    const LUT = new Float32Array(1025), gi = 1 / o.gamma;
+    for (let k = 0; k <= 1024; k++) LUT[k] = Math.pow(k / 1024, gi);
+    const ink = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let r = (R[i] - lo) / span + bri, g = (G[i] - lo) / span + bri, b = (B[i] - lo) / span + bri;
+      r = (r - 0.5) * cf + 0.5; g = (g - 0.5) * cf + 0.5; b = (b - 0.5) * cf + 0.5;
+      if (sat !== 1) { const l = lum(r, g, b); r = l + (r - l) * sat; g = l + (g - l) * sat; b = l + (b - l) * sat; }
+      r = r < 0 ? 0 : r > 1 ? 1 : r; g = g < 0 ? 0 : g > 1 ? 1 : g; b = b < 0 ? 0 : b > 1 ? 1 : b;
+      r = LUT[(r * 1024 + 0.5) | 0]; g = LUT[(g * 1024 + 0.5) | 0]; b = LUT[(b * 1024 + 0.5) | 0];
+      if (inv) { r = 1 - r; g = 1 - g; b = 1 - b; }
+      R[i] = r; G[i] = g; B[i] = b;
+      if (blank[i]) { ink[i] = 0; continue; }
+      let v = lum(r, g, b);
+      if (!o.darkBg) v = 1 - v;          // on light backgrounds, dark pixels get dense characters
+      if (o.reverse) v = 1 - v;
+      ink[i] = v;
+    }
+
+    // 5. per-cell averages (ink + "fully blank" mask)
+    const nc = cols * rows, per = sx * sy;
+    const cellInk = new Float32Array(nc), cellMask = new Uint8Array(nc);
+    for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+      let s = 0, nb = 0;
+      for (let dy = 0; dy < sy; dy++) {
+        const base = (cy * sy + dy) * w + cx * sx;
+        for (let dx = 0; dx < sx; dx++) { s += ink[base + dx]; if (!blank[base + dx]) nb++; }
+      }
+      const ci = cy * cols + cx;
+      cellInk[ci] = s / per; cellMask[ci] = nb === 0 ? 1 : 0;
+    }
+
+    // 6. character generation per mode
+    const out = new Array(nc);
+    const str = o.ditherStrength / 100;
+    const ramp = Array.from(o.ramp);
+
+    if (o.mode === 'brightness') {
+      const q = quantize(cellInk, cols, rows, ramp.length, o.dither, str, cellMask);
+      for (let i = 0; i < nc; i++) out[i] = cellMask[i] ? ' ' : ramp[q[i]];
+
+    } else if (o.mode === 'edges') {
+      const thr = 0.04 + o.edgeThreshold / 100 * 2.4;
+      const q = o.edgeBlend ? quantize(cellInk, cols, rows, ramp.length, o.dither, str, cellMask) : null;
+      const P = (x, y) => ink[(y < 0 ? 0 : y >= h ? h - 1 : y) * w + (x < 0 ? 0 : x >= w ? w - 1 : x)];
+      for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+        const ci = cy * cols + cx;
+        if (cellMask[ci]) { out[ci] = ' '; continue; }
+        let sxx = 0, sxy = 0, mag = 0, top = 0, bot = 0;
+        for (let dy = 0; dy < sy; dy++) for (let dx = 0; dx < sx; dx++) {
+          const x = cx * sx + dx, y = cy * sy + dy;
+          const gx = (P(x + 1, y - 1) + 2 * P(x + 1, y) + P(x + 1, y + 1)) - (P(x - 1, y - 1) + 2 * P(x - 1, y) + P(x - 1, y + 1));
+          const gy = (P(x - 1, y + 1) + 2 * P(x, y + 1) + P(x + 1, y + 1)) - (P(x - 1, y - 1) + 2 * P(x, y - 1) + P(x + 1, y - 1));
+          mag += Math.sqrt(gx * gx + gy * gy);
+          sxx += gx * gx - gy * gy; sxy += 2 * gx * gy;
+          if (dy < sy / 2) top += Math.abs(gy); else bot += Math.abs(gy);
+        }
+        mag /= per;
+        if (mag > thr) {
+          // dominant gradient orientation via doubled-angle averaging; edge runs perpendicular to it
+          const a = 0.5 * Math.atan2(sxy, sxx) * 180 / Math.PI;
+          out[ci] = Math.abs(a) < 22.5 ? '|' : Math.abs(a) > 67.5 ? (bot > top * 1.5 ? '_' : '-') : a > 0 ? '/' : '\\';
+        } else out[ci] = q ? ramp[q[ci]] : ' ';
+      }
+
+    } else if (o.mode === 'blocks') {
+      const SH = ' ░▒▓█', q = quantize(ink, w, h, 5, o.dither, str, blank);
+      for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+        const i1 = cy * 2 * w + cx, i2 = i1 + w, ci = cy * cols + cx;
+        if (blank[i1] && blank[i2]) { out[ci] = ' '; continue; }
+        const t = q[i1], b = q[i2];
+        out[ci] = Math.abs(t - b) >= 2 ? (t > b ? '▀' : '▄') : SH[Math.round((t + b) / 2)];
+      }
+
+    } else if (o.mode === 'braille') {
+      const shift = 0.5 - o.brailleThreshold / 100, v = new Float32Array(n);
+      for (let i = 0; i < n; i++) v[i] = ink[i] + shift;
+      const q = quantize(v, w, h, 2, o.dither, str, blank);
+      for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+        let bits = 0;
+        for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) {
+          const i = (cy * 4 + dy) * w + cx * 2 + dx;
+          if (q[i] && !blank[i]) bits |= BRAILLE_BITS[dy][dx];
+        }
+        out[cy * cols + cx] = String.fromCharCode(0x2800 + bits);
+      }
+
+    } else if (o.mode === 'shape') {
+      // Both the image and the glyph bitmaps are softened slightly (3×3 box) so that flat
+      // mid-tones match evenly-spread glyphs instead of collapsing to a blank space.
+      // Distance = Σ(p−g)² + λ·D·(mean_p − mean_g)²  (λ keeps overall density faithful).
+      const Gd = prepGlyphs(m.glyphs), D = Gd.D, ng = Gd.n, Pc = new Float32Array(D), LAMBDA = 1;
+      const soft = boxBlur(ink, w, h, 1);
+      for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+        const ci = cy * cols + cx;
+        if (cellMask[ci]) { out[ci] = ' '; continue; }
+        let mp = 0, k = 0;
+        for (let dy = 0; dy < sy; dy++) {
+          const base = (cy * sy + dy) * w + cx * sx;
+          for (let dx = 0; dx < sx; dx++) { const v = soft[base + dx]; Pc[k++] = v; mp += v; }
+        }
+        mp /= D;
+        // binary search for the glyph with the closest mean, then expand outwards;
+        // Cauchy–Schwarz gives a lower bound (1+λ)·D·Δmean² that lets us stop early.
+        let a0 = 0, b0 = ng;
+        while (a0 < b0) { const mid = (a0 + b0) >> 1; if (Gd.means[mid] < mp) a0 = mid + 1; else b0 = mid; }
+        let a = a0 - 1, b = a0, best = Infinity, bi = 0;
+        while (a >= 0 || b < ng) {
+          let gIdx;
+          if (a < 0) gIdx = b++;
+          else if (b >= ng) gIdx = a--;
+          else if (mp - Gd.means[a] <= Gd.means[b] - mp) gIdx = a--;
+          else gIdx = b++;
+          const d = Gd.means[gIdx] - mp;
+          if ((1 + LAMBDA) * D * d * d >= best) break;
+          let dist = LAMBDA * D * d * d;
+          const off = gIdx * D;
+          for (let j = 0; j < D; j++) { const e = Pc[j] - Gd.bm[off + j]; dist += e * e; if (dist >= best) break; }
+          if (dist < best) { best = dist; bi = gIdx; }
+        }
+        out[ci] = Gd.chars[bi];
+      }
+    }
+
+    // 7. per-cell colours (only for colour modes)
+    let colors = null;
+    if (o.colorMode === 'full' || o.colorMode === 'gray' || o.colorMode === 'palette') {
+      colors = new Uint8Array(nc * 3);
+      const pal = o.colorMode === 'palette' ? palette(o.paletteSize) : null, cache = new Map();
+      for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+        let r = 0, g = 0, b = 0, cnt = 0, ar = 0, ag = 0, ab = 0;
+        for (let dy = 0; dy < sy; dy++) {
+          const base = (cy * sy + dy) * w + cx * sx;
+          for (let dx = 0; dx < sx; dx++) {
+            const i = base + dx;
+            ar += R[i]; ag += G[i]; ab += B[i];
+            if (!blank[i]) { r += R[i]; g += G[i]; b += B[i]; cnt++; }
+          }
+        }
+        if (cnt) { r /= cnt; g /= cnt; b /= cnt; } else { r = ar / per; g = ag / per; b = ab / per; }
+        let R8 = Math.round(r * 255), G8 = Math.round(g * 255), B8 = Math.round(b * 255);
+        if (o.colorMode === 'gray') { R8 = G8 = B8 = Math.round(lum(r, g, b) * 255); }
+        else if (pal) {
+          const key = (R8 >> 2) << 12 | (G8 >> 2) << 6 | (B8 >> 2);
+          let p = cache.get(key);
+          if (!p) { p = nearest(pal, R8, G8, B8); cache.set(key, p); }
+          R8 = p[0]; G8 = p[1]; B8 = p[2];
+        }
+        const ci = (cy * cols + cx) * 3;
+        colors[ci] = R8; colors[ci + 1] = G8; colors[ci + 2] = B8;
+      }
+    }
+
+    const lines = new Array(rows);
+    for (let y = 0; y < rows; y++) lines[y] = out.slice(y * cols, (y + 1) * cols).join('');
+    return { id:m.id, mode:o.mode, cols, rows, lines, colors, ms:performance.now() - t0 };
+  }
+
+  /* ===================================================================
+     JS 3a. CLARITY SCORE
+     How close the ASCII *looks* to the ORIGINAL picture, 0–100.
+       1. Simulate: paint each cell with its glyph's coverage bitmap and mix the
+          background colour with the text (or per-cell) colour by coverage.
+       2. Reference: the original oriented image (before brightness, contrast…),
+          composited on the output background and resampled to the same grid.
+       3. Compare luminance: 0.6 · SSIM at 2 scales (after a ≈1-cell blur that
+          mimics viewing distance) + 0.3 · correlation of Sobel edge magnitude
+          + 0.1 · penalty for large blank/solid areas the original doesn't have.
+          Full-colour and palette modes add a small chroma term (ΔE of a*b*).
+     Grid: 2 samples per cell across × 4 down (square samples), at most 200 wide.
+     Glyph bitmaps are 4×8; painting their 2×4 (or 1×2) block averages is exactly
+     the area-average of a full 4×8 painting, so we paint at the analysis grid
+     directly and stay well under ~15 ms even for 600-column output.
+     =================================================================== */
+  const ANALYSIS_MAX_W = 200;               // keep in sync with analysisSize() on the main thread
+  function analysisSize(cols, rows) {
+    const w = Math.min(cols * 2, ANALYSIS_MAX_W);
+    return { w, h:Math.max(1, Math.round(w * 2 * rows / cols)) };
+  }
+  const blur2 = (X, w, h) => boxBlur(boxBlur(X, w, h, 1), w, h, 1);   // ≈ Gaussian σ 1.15 samples
+
+  function toChannels(px, n) {
+    const R = new Float32Array(n), G = new Float32Array(n), B = new Float32Array(n), A = new Float32Array(n);
+    for (let i = 0, j = 0; i < n; i++, j += 4) { R[i] = px[j] / 255; G[i] = px[j + 1] / 255; B[i] = px[j + 2] / 255; A[i] = px[j + 3] / 255; }
+    return [R, G, B, A];
+  }
+
+  /** Area-weighted resample of one float channel (exact for up- and down-scaling). */
+  function resample(src, sw, sh, dw, dh) {
+    if (sw === dw && sh === dh) return src;
+    const spans = (n, dn) => {
+      const k = n / dn, out = [];
+      for (let d = 0; d < dn; d++) {
+        const a = d * k, b = a + k, i0 = Math.floor(a), i1 = Math.min(n, Math.ceil(b - 1e-9)), ii = [], ww = [];
+        for (let i = i0; i < i1; i++) { ii.push(i); ww.push((Math.min(b, i + 1) - Math.max(a, i)) / k); }
+        out.push([ii, ww]);
+      }
+      return out;
+    };
+    const X = spans(sw, dw), Y = spans(sh, dh), tmp = new Float32Array(dw * sh), out = new Float32Array(dw * dh);
+    for (let y = 0; y < sh; y++) {
+      const row = y * sw, o = y * dw;
+      for (let d = 0; d < dw; d++) {
+        const [ii, ww] = X[d]; let s = 0;
+        for (let j = 0; j < ii.length; j++) s += src[row + ii[j]] * ww[j];
+        tmp[o + d] = s;
+      }
+    }
+    for (let d = 0; d < dh; d++) {
+      const [ii, ww] = Y[d], o = d * dw;
+      for (let x = 0; x < dw; x++) {
+        let s = 0;
+        for (let j = 0; j < ii.length; j++) s += tmp[ii[j] * dw + x] * ww[j];
+        out[o + x] = s;
+      }
+    }
+    return out;
+  }
+
+  function sobel(X, w, h) {
+    const out = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      const y0 = (y > 0 ? y - 1 : 0) * w, y1 = y * w, y2 = (y < h - 1 ? y + 1 : y) * w;
+      for (let x = 0; x < w; x++) {
+        const x0 = x > 0 ? x - 1 : 0, x2 = x < w - 1 ? x + 1 : x;
+        const gx = X[y0 + x2] + 2 * X[y1 + x2] + X[y2 + x2] - X[y0 + x0] - 2 * X[y1 + x0] - X[y2 + x0];
+        const gy = X[y2 + x0] + 2 * X[y2 + x] + X[y2 + x2] - X[y0 + x0] - 2 * X[y0 + x] - X[y0 + x2];
+        out[y1 + x] = Math.sqrt(gx * gx + gy * gy);
+      }
+    }
+    return out;
+  }
+
+  function corr(a, b) {
+    const n = a.length; let ma = 0, mb = 0;
+    for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; }
+    ma /= n; mb /= n;
+    let sab = 0, saa = 0, sbb = 0;
+    for (let i = 0; i < n; i++) { const da = a[i] - ma, db = b[i] - mb; sab += da * db; saa += da * da; sbb += db * db; }
+    if (saa < 1e-9 || sbb < 1e-9) return saa < 1e-9 && sbb < 1e-9 ? 1 : 0;
+    return sab / Math.sqrt(saa * sbb);
+  }
+
+  /** SSIM with a (2r+1)² box window. The reference side is precomputed once. */
+  function ssimPrep(Y, w, h, r) {
+    const YY = new Float32Array(Y.length);
+    for (let i = 0; i < Y.length; i++) YY[i] = Y[i] * Y[i];
+    return { Y, w, h, r, mu:boxBlur(Y, w, h, r), yy:boxBlur(YY, w, h, r) };
+  }
+  function ssimWith(X, p) {
+    const { Y, w, h, r, mu, yy } = p, n = w * h, XX = new Float32Array(n), XY = new Float32Array(n);
+    for (let i = 0; i < n; i++) { XX[i] = X[i] * X[i]; XY[i] = X[i] * Y[i]; }
+    const mx = boxBlur(X, w, h, r), xx = boxBlur(XX, w, h, r), xy = boxBlur(XY, w, h, r);
+    const C1 = 1e-4, C2 = 9e-4; let s = 0;
+    for (let i = 0; i < n; i++) {
+      const a = mx[i], b = mu[i], vx = Math.max(0, xx[i] - a * a), vy = Math.max(0, yy[i] - b * b), cv = xy[i] - a * b;
+      s += ((2 * a * b + C1) * (2 * cv + C2)) / ((a * a + b * b + C1) * (vx + vy + C2));
+    }
+    return s / n;
+  }
+
+  function labOf(r, g, b) {
+    const f = c => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    const R = f(r), G = f(g), B = f(b);
+    const t = v => v > 0.008856 ? Math.cbrt(v) : 7.787 * v + 16 / 116;
+    const fx = t((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047);
+    const fy = t(0.2126 * R + 0.7152 * G + 0.0722 * B);
+    const fz = t((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883);
+    return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+  }
+
+  /** Mean / spread of a ~4 % ring along the image border (used for background detection). */
+  function borderStats(L, A, w, h) {
+    const bw = Math.max(1, Math.round(Math.min(w, h) * 0.04));
+    let s = 0, s2 = 0, n = 0, tr = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (y >= bw && y < h - bw && x >= bw && x < w - bw) continue;
+      const i = y * w + x, v = L[i];
+      s += v; s2 += v * v; n++; if (A[i] < 0.5) tr++;
+    }
+    const mean = s / n, std = Math.sqrt(Math.max(0, s2 / n - mean * mean));
+    return { mean, std, transparent:tr / n, uniform:std < 0.035 };
+  }
+
+  /* Coverage bitmaps: font glyphs arrive from the main thread (4×8, densest ASCII glyph
+     ≈ 90 % like getGlyphs()); blocks and braille are exact and built here. */
+  const SHADE_COV = { '░':0.25, '▒':0.5, '▓':0.75 };
+  let covCache = { key:null, map:null };
+  function covEntry(b) {                     // 4×8 bitmap + its 2×4 and 1×2 block averages
+    const c2 = new Float32Array(8), c1 = new Float32Array(2); let s = 0;
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) {
+      const v = b[y * 4 + x]; s += v;
+      c2[(y >> 1) * 2 + (x >> 1)] += v / 4; c1[y >> 2] += v / 16;
+    }
+    return { 4:b, 2:c2, 1:c1, mean:s / 32 };
+  }
+  // Lookup by UTF-16 code (an array for everything below U+3000 — ASCII, blocks and braille —
+  // because a Map keyed by freshly-sliced two-byte strings is slow for 100k+ braille cells).
+  function coverageMap(g) {
+    if (covCache.key === g.key) return covCache.map;
+    const map = new Array(0x3000), fill = v => new Float32Array(32).fill(v);
+    const put = (ch, e) => { map[ch.charCodeAt(0)] = e; };
+    for (let i = 0; i < g.chars.length; i++) put(g.chars[i], covEntry(g.bitmaps.slice(i * 32, i * 32 + 32)));
+    put(' ', covEntry(fill(0))); put('⠀', map[32]);
+    put('█', covEntry(fill(1)));
+    for (const k in SHADE_COV) put(k, covEntry(fill(SHADE_COV[k])));
+    const top = new Float32Array(32), bot = new Float32Array(32);
+    top.fill(1, 0, 16); bot.fill(1, 16, 32);
+    put('▀', covEntry(top)); put('▄', covEntry(bot));
+    map.extra = new Map();                         // custom characters at U+3000 and above
+    for (let i = 0; i < g.chars.length; i++) if (g.chars[i].charCodeAt(0) >= 0x3000) map.extra.set(g.chars[i].charCodeAt(0), map[g.chars[i].charCodeAt(0)]);
+    covCache = { key:g.key, map };
+    return map;
+  }
+  function covOf(map, code) {
+    let e = code < 0x3000 ? map[code] : map.extra.get(code);
+    if (e) return e;
+    const b = new Float32Array(32);
+    if (code >= 0x2800 && code <= 0x28ff) {          // braille: exact 2×4 dot pattern, each dot = 2×2 bitmap pixels
+      const bits = code - 0x2800;
+      for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) {
+        if (!(bits & BRAILLE_BITS[dy][dx])) continue;
+        for (let yy = 0; yy < 2; yy++) for (let xx = 0; xx < 2; xx++) b[(dy * 2 + yy) * 4 + dx * 2 + xx] = 0.9;
+      }
+    } else b.fill(0.45);                             // unknown glyph: assume mid coverage
+    e = covEntry(b);
+    if (code < 0x3000) map[code] = e; else map.extra.set(code, e);
+    return e;
+  }
+
+  /** Paint the result: gx×(2·gx) samples per cell, background mixed with text colour by coverage. */
+  function simulate(r, map, gx, sc) {
+    const gy = gx * 2, cols = r.cols, rows = r.rows, W = cols * gx, H = rows * gy;
+    const S = new Float32Array(W * H), cov = new Float32Array(cols * rows), mix = r.colors && sc.chroma ? new Float32Array(cols * rows * 3) : null;
+    const bg = sc.outBg, fg = sc.outFg, bgL = lum(bg[0], bg[1], bg[2]) / 255, fgL = lum(fg[0], fg[1], fg[2]) / 255, C = r.colors;
+    for (let y = 0; y < rows; y++) {
+      const line = r.lines[y];
+      for (let x = 0; x < cols; x++) {
+        const ci = y * cols + x, e = covOf(map, x < line.length ? line.charCodeAt(x) : 32), bm = e[gx];
+        cov[ci] = e.mean;
+        const tl = C ? lum(C[ci * 3], C[ci * 3 + 1], C[ci * 3 + 2]) / 255 : fgL, d = tl - bgL;
+        for (let sy = 0; sy < gy; sy++) {
+          const o = (y * gy + sy) * W + x * gx;
+          for (let sx = 0; sx < gx; sx++) S[o + sx] = bgL + bm[sy * gx + sx] * d;
+        }
+        if (mix) for (let c = 0; c < 3; c++) mix[ci * 3 + c] = (bg[c] + e.mean * (C[ci * 3 + c] - bg[c])) / 255;
+      }
+    }
+    return { S, W, H, cov, mix };
+  }
+
+  /** Per B×B-cell block of the reference: luminance spread and mean Lab colour (cached per grid). */
+  function refBlocks(P, cols, rows, B, withLab) {
+    const key = cols + 'x' + rows + 'x' + B + (withLab ? 'c' : '');
+    if (P.cache[key]) return P.cache[key];
+    if (Object.keys(P.cache).length > 24) P.cache = {};
+    const bc = Math.ceil(cols / B), br = Math.ceil(rows / B), std = new Float32Array(bc * br), lab = new Float32Array(bc * br * 3);
+    const kx = P.w / cols, ky = P.h / rows;
+    for (let by = 0; by < br; by++) for (let bx = 0; bx < bc; bx++) {
+      const x0 = Math.floor(bx * B * kx), x1 = Math.max(x0 + 1, Math.min(P.w, Math.floor(Math.min(cols, bx * B + B) * kx)));
+      const y0 = Math.floor(by * B * ky), y1 = Math.max(y0 + 1, Math.min(P.h, Math.floor(Math.min(rows, by * B + B) * ky)));
+      let s = 0, s2 = 0, n = 0, rr = 0, gg = 0, bb = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const i = y * P.w + x, v = P.L[i];
+        s += v; s2 += v * v; rr += P.R[i]; gg += P.G[i]; bb += P.B[i]; n++;
+      }
+      const bi = by * bc + bx, m = s / n;
+      std[bi] = Math.sqrt(Math.max(0, s2 / n - m * m));
+      if (!withLab) continue;
+      const L = labOf(rr / n, gg / n, bb / n);
+      lab[bi * 3] = L[0]; lab[bi * 3 + 1] = L[1]; lab[bi * 3 + 2] = L[2];
+    }
+    return (P.cache[key] = { bc, br, std, lab });
+  }
+
+  /**
+   * Prepare the reference (original pixels) on the analysis grid. If the picture
+   * is a graphic on a plain border far from the output background (a dark logo on
+   * white shown on a dark page), the reference is compared as its negative: the
+   * image's background should become the output background, not a wall of glyphs.
+   */
+  function prepRef(px, w, h, Aw, Ah, sc) {
+    let [R, G, B, A] = toChannels(px, w * h);
+    if (w !== Aw || h !== Ah) { R = resample(R, w, h, Aw, Ah); G = resample(G, w, h, Aw, Ah); B = resample(B, w, h, Aw, Ah); A = resample(A, w, h, Aw, Ah); }
+    const n = Aw * Ah, bg = sc.outBg, br = bg[0] / 255, bgg = bg[1] / 255, bb = bg[2] / 255, bgL = lum(br, bgg, bb);
+    const L = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = A[i] < 0 ? 0 : A[i] > 1 ? 1 : A[i];
+      R[i] = R[i] * a + br * (1 - a); G[i] = G[i] * a + bgg * (1 - a); B[i] = B[i] * a + bb * (1 - a);
+      L[i] = lum(R[i], G[i], B[i]);
+    }
+    const border = borderStats(L, A, Aw, Ah);
+    const flip = border.uniform && Math.abs(border.mean - bgL) > 0.5;
+    const Lr = flip ? L.map(v => 1 - v) : L;
+    const Yb = blur2(Lr, Aw, Ah), w2 = Math.max(1, Aw >> 1), h2 = Math.max(1, Ah >> 1);
+    return {
+      w:Aw, h:Ah, w2, h2, L, R, G, B, A, bgL, flip, border,
+      s1:ssimPrep(Yb, Aw, Ah, 3), s2:ssimPrep(resample(Yb, Aw, Ah, w2, h2), w2, h2, 2),
+      edge:sobel(Yb, Aw, Ah), cache:{},
+    };
+  }
+
+  /** Score one render result against a prepared reference. Returns 0–100 (one decimal). */
+  function clarity(r, P, sc) {
+    const map = coverageMap(sc.glyphs);
+    const gx = r.cols >= P.w ? 1 : r.cols * 2 >= P.w ? 2 : 4;
+    const sim = simulate(r, map, gx, sc);
+    const X = resample(sim.S, sim.W, sim.H, P.w, P.h), Xb = blur2(X, P.w, P.h);
+    const ss = (ssimWith(Xb, P.s1) + ssimWith(resample(Xb, P.w, P.h, P.w2, P.h2), P.s2)) / 2;
+    const edge = corr(sobel(Xb, P.w, P.h), P.edge);
+
+    // Penalty: B×B-cell blocks (2×2 up to ~100 columns, larger beyond) that are entirely blank
+    // or entirely the densest glyph while the original has visible detail there.
+    const B = Math.max(2, Math.round(r.cols / 60)), blk = refBlocks(P, r.cols, r.rows, B, !!sim.mix), nb = blk.bc * blk.br;
+    let maxCov = 0;
+    for (let i = 0; i < sim.cov.length; i++) if (sim.cov[i] > maxCov) maxCov = sim.cov[i];
+    const solidT = maxCov > 0.3 ? maxCov * 0.85 : Infinity;
+    let lost = 0, dE = 0;
+    for (let by = 0; by < blk.br; by++) for (let bx = 0; bx < blk.bc; bx++) {
+      let allBlank = true, allSolid = true, mr = 0, mg = 0, mb = 0, k = 0;
+      for (let dy = 0; dy < B; dy++) for (let dx = 0; dx < B; dx++) {
+        const x = bx * B + dx, y = by * B + dy;
+        if (x >= r.cols || y >= r.rows) continue;
+        const ci = y * r.cols + x, c = sim.cov[ci];
+        if (c >= 0.02) allBlank = false;
+        if (c < solidT) allSolid = false;
+        if (sim.mix) { mr += sim.mix[ci * 3]; mg += sim.mix[ci * 3 + 1]; mb += sim.mix[ci * 3 + 2]; k++; }
+      }
+      const bi = by * blk.bc + bx;
+      if ((allBlank || allSolid) && blk.std[bi] > 0.07) lost++;
+      if (sim.mix && k) {
+        const L = labOf(mr / k, mg / k, mb / k);
+        dE += Math.hypot(L[1] - blk.lab[bi * 3 + 1], L[2] - blk.lab[bi * 3 + 2]);
+      }
+    }
+    const pen = 1 - Math.min(1, lost / nb * 3);
+    let score = 0.6 * Math.max(0, ss) + 0.3 * Math.max(0, edge) + 0.1 * pen;
+    if (sc.chroma && sim.mix) score = 0.88 * score + 0.12 * (1 - Math.min(1, dE / nb / 30));
+    return Math.round(score * 1000) / 10;
+  }
+
+  /** Render job entry: characters + (optionally) the live clarity score. The prepared reference
+      is reused while the image, grid and output background stay the same (m.ref.key). */
+  let liveRef = { key:null, P:null };
+  function render(m) {
+    const r = process(m);
+    if (m.ref && m.score) {
+      try {
+        if (liveRef.key !== m.ref.key) {
+          liveRef = { key:m.ref.key, P:prepRef(new Uint8ClampedArray(m.ref.buffer), m.ref.w, m.ref.h, m.ref.w, m.ref.h, m.score) };
+        }
+        r.clarity = clarity(r, liveRef.P, m.score);
+      } catch (e) { r.clarity = null; }
+    }
+    return r;
+  }
+
+  /* ===================================================================
+     JS 3b. MAGIC TOUCH — automatic best-clarity search
+     The main thread sends the ORIGINAL pixels once per run (4×8 samples per
+     cell at ≤100 columns). We cache per-mode samples, then:
+       1. analyse the histogram, noise, edge density and border for a smart
+          starting point (and also score the user's current settings);
+       2. Full auto only: score every mode × character-set pair once, keep 2;
+       3. coordinate descent in a fixed order with shrinking steps (3 passes),
+          capped at `budget` candidate renders.
+     Deterministic: same pixels + settings → same result. Between candidates
+     we yield (MessageChannel, no 4 ms timer clamp) so cancel messages and
+     progress get through. Ties within 1 point go to the simpler setting.
+     =================================================================== */
+  const CANCELLED = new Error('cancelled');
+  let magicJob = null;
+  const yieldNow = () => new Promise(res => {
+    const c = new MessageChannel();
+    c.port1.onmessage = () => { c.port1.close(); res(); };
+    c.port2.postMessage(0);
+  });
+  function cancelMagic(runId) { if (magicJob && magicJob.runId === runId) magicJob.cancelled = true; }
+
+  async function magic(m, emit) {
+    const job = { runId:m.runId, cancelled:false };
+    magicJob = job;
+    try {
+      const res = await magicSearch(m, job, emit);
+      emit(Object.assign({ type:'magicDone', runId:m.runId }, res));
+    } catch (err) {
+      if (err === CANCELLED) emit({ type:'magicCancelled', runId:m.runId });
+      else emit({ type:'magicError', runId:m.runId, error:String(err && err.message || err) });
+    } finally { if (magicJob === job) magicJob = null; }
+  }
+
+  /** Step 1: quick analysis of the original for a smart starting point. */
+  function analyse(L, w, h, P, base) {
+    const n = w * h, hist = new Uint32Array(256);
+    for (let i = 0; i < n; i++) hist[L[i] <= 0 ? 0 : L[i] >= 1 ? 255 : (L[i] * 255) | 0]++;
+    const pct = q => { const t = n * q; let acc = 0; for (let k = 0; k < 256; k++) { acc += hist[k]; if (acc >= t) return (k + 0.5) / 255; } return 1; };
+    const lo = pct(0.005), med = pct(0.5), hi = pct(0.995), range = hi - lo;
+    const s = { brightness:0, contrast:0, gamma:1, sharpen:0, blur:0, autoLevels:range < 0.6 };
+    // Mid-grey median near 0.5: after auto-levels the median sits at (med−lo)/range; gamma maps m → m^(1/γ).
+    const m = s.autoLevels && range > 0.02 ? (med - lo) / range : med;
+    if (m > 0.04 && m < 0.96) s.gamma = Math.round(Math.min(2, Math.max(0.5, Math.log(m) / Math.log(0.5))) * 20) / 20;
+    if (!s.autoLevels && range < 0.75) s.contrast = Math.round((0.85 - range) * 60);
+
+    // Noise: Immerkær's estimator, restricted to the flattest 40 % of pixels.
+    const G = sobel(L, w, h), gh = new Uint32Array(256);
+    for (let i = 0; i < n; i++) gh[Math.min(255, (G[i] * 64) | 0)]++;
+    let thr = 0, acc = 0;
+    for (; thr < 255; thr++) { acc += gh[thr]; if (acc >= n * 0.4) break; }
+    thr = (thr + 1) / 64;
+    let ls = 0, ln = 0, strong = 0;
+    for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (G[i] > 0.4) strong++;
+      if (G[i] > thr) continue;
+      const v = L[i - w - 1] - 2 * L[i - w] + L[i - w + 1] - 2 * L[i - 1] + 4 * L[i] - 2 * L[i + 1] + L[i + w - 1] - 2 * L[i + w] + L[i + w + 1];
+      ls += Math.abs(v); ln++;
+    }
+    const noise = ln ? Math.sqrt(Math.PI / 2) * ls / ln / 6 : 0;
+    const density = strong / n;
+    if (noise > 0.02) { s.blur = Math.min(1.5, Math.max(0.5, Math.round((noise - 0.01) * 80) / 2)); s.sharpen = 0; }
+    else if (density < 0.03) s.sharpen = Math.round(Math.min(60, Math.max(30, 60 - density / 0.03 * 30)));
+
+    // Background from the border: plain white/black → matching blank mode, threshold just above its spread.
+    const b = P.border;
+    s.blankMode = 'off'; s.blankThreshold = base.blankThreshold;
+    if (b.uniform && b.transparent < 0.5) {
+      if (b.mean > 0.85) { s.blankMode = 'white'; s.blankThreshold = Math.min(50, Math.max(2, Math.ceil((1 - b.mean + 2.5 * b.std) * 100) + 2)); }
+      else if (b.mean < 0.15) { s.blankMode = 'black'; s.blankThreshold = Math.min(50, Math.max(2, Math.ceil((b.mean + 2.5 * b.std) * 100) + 2)); }
+    }
+    // Subject darker than its (plain) background, shown on a dark page (or vice versa) → reverse the ramp.
+    s.reverse = P.flip;
+    return { s, info:{ lo, med, hi, range, noise, density, border:b, flip:P.flip } };
+  }
+
+  /** How far a setting is from "untouched" — used to prefer simpler results. */
+  function complexity(o, chroma) {
+    let c = 0;
+    if (o.brightness) c += 1 + Math.abs(o.brightness) / 100;
+    if (o.contrast) c += 1 + Math.abs(o.contrast) / 100;
+    if (o.gamma !== 1) c += 1 + Math.abs(o.gamma - 1);
+    if (o.sharpen) c += 1 + o.sharpen / 100;
+    if (o.blur) c += 1 + o.blur / 10;
+    if (chroma && o.saturation !== 100) c += 1 + Math.abs(o.saturation - 100) / 100;
+    if (o.autoLevels) c += 1;
+    if (o.invert) c += 1;
+    if (o.reverse && o.mode !== 'shape') c += 1;
+    if (o.blankMode !== 'off') c += 1;
+    if (o.dither !== 'none' && o.mode !== 'shape') c += 1 + (o.dither.startsWith('bayer') ? 0.2 : 0);
+    return c;
+  }
+
+  async function magicSearch(m, job, emit) {
+    const { cols, rows, lim, base, score:sc, budget, keys } = m;
+    const SW = m.src.w, SH = m.src.h, px = new Uint8ClampedArray(m.src.buffer);
+    const A0 = analysisSize(cols, rows), P = prepRef(px, SW, SH, A0.w, A0.h, sc);
+
+    // Raw channels at 4×8 per cell (for the analysis and the per-mode samples).
+    const ch = toChannels(px, SW * SH), L = new Float32Array(SW * SH), bg = sc.outBg.map(v => v / 255);
+    for (let i = 0; i < L.length; i++) {
+      const a = ch[3][i];
+      L[i] = lum(ch[0][i] * a + bg[0] * (1 - a), ch[1][i] * a + bg[1] * (1 - a), ch[2][i] * a + bg[2] * (1 - a));
+    }
+    const { s:sug, info } = analyse(L, SW, SH, P, base);
+
+    const srcCache = {};
+    const srcFor = (sx, sy) => {
+      const k = sx + 'x' + sy;
+      if (srcCache[k]) return srcCache[k];
+      const w = cols * sx, h = rows * sy;
+      let buf = px;
+      if (w !== SW || h !== SH) {
+        const c4 = ch.map(c => resample(c, SW, SH, w, h));
+        buf = new Uint8ClampedArray(w * h * 4);
+        for (let i = 0; i < w * h; i++) for (let c = 0; c < 4; c++) buf[i * 4 + c] = c4[c][i] * 255;   // clamped + rounded
+      }
+      return (srcCache[k] = { w, h, buffer:buf.buffer });
+    };
+
+    const fit = (k, v) => {
+      const l = lim[k]; v = Math.min(l.max, Math.max(l.min, v));
+      return +(Math.round((v - l.min) / l.step) * l.step + l.min).toFixed(4);
+    };
+    const keyOf = o => keys.map(k => o[k]).join('|');
+    // Settings that have no effect in a candidate go back to the user's values, so the
+    // result never changes something hidden (and equivalent candidates share one memo entry).
+    const norm = o => {
+      o = { ...o };
+      if (o.blankMode === 'off') o.blankThreshold = base.blankThreshold;
+      if (o.dither === 'none' || o.mode === 'shape') o.ditherStrength = base.ditherStrength;
+      if (o.mode === 'shape') { o.dither = base.dither; o.reverse = base.reverse; }
+      if (o.mode !== 'edges') { o.edgeThreshold = base.edgeThreshold; o.edgeBlend = base.edgeBlend; }
+      if (o.mode !== 'braille') o.brailleThreshold = base.brailleThreshold;
+      if (!sc.chroma) o.saturation = base.saturation;
+      return o;
+    };
+    const memo = new Map();
+    let used = 0;
+    async function tryO(o, end) {
+      o = norm(o);
+      const key = keyOf(o);
+      if (memo.has(key)) return memo.get(key);
+      if (used >= end) return null;
+      if (job.cancelled) throw CANCELLED;
+      const [sx, sy] = m.modes[o.mode], src = srcFor(sx, sy);
+      const po = Object.assign({}, o, {
+        ramp:m.ramps[o.charset] || ' ', dither:o.mode === 'shape' ? 'none' : o.dither,
+        darkBg:m.darkBg, colorMode:m.colorMode, paletteSize:m.paletteSize,
+      });
+      const glyphs = o.mode === 'shape' ? (o.charset === 'custom' && m.glyphs.custom ? m.glyphs.custom : m.glyphs.ascii) : null;
+      const r = process({ id:0, w:src.w, h:src.h, cols, rows, sx, sy, buffer:src.buffer, o:po, glyphs });
+      const c = { o, s:clarity(r, P, sc), cx:complexity(o, sc.chroma) };
+      memo.set(key, c); used++;
+      emit({ type:'magicProgress', runId:m.runId, done:Math.min(used, budget), total:budget });
+      await yieldNow();
+      if (job.cancelled) throw CANCELLED;
+      return c;
+    }
+
+    // Accept a candidate if it scores higher (by > 1 point when it is more complex),
+    // or if it is simpler and still within 1 point of the best score seen.
+    const better = (c, b, peak) => (c.s > b.s && (c.cx <= b.cx || c.s > b.s + 1)) || (c.cx < b.cx - 1e-6 && c.s >= peak - 1);
+    const toggles = o => {
+      const t = [{ autoLevels:!o.autoLevels }];
+      if (o.mode !== 'shape') t.push({ reverse:!o.reverse });
+      if (o.blankMode !== 'off') t.push({ blankMode:'off' });
+      else if (sug.blankMode !== 'off') t.push({ blankMode:sug.blankMode, blankThreshold:sug.blankThreshold });
+      if (o.mode === 'edges') t.push({ edgeBlend:!o.edgeBlend });
+      if (o.invert) t.push({ invert:false });
+      else if (m.scope === 'full') t.push({ invert:true });      // never turned ON in "Tune image only"
+      return t;
+    };
+    const NEUTRAL = { contrast:0, gamma:1, brightness:0, sharpen:0, blur:0, saturation:100 };
+    const ORDER = [
+      ['contrast', 20], ['gamma', 0.2], ['brightness', 16], ['sharpen', 20], ['blur', 1],
+      ['saturation', 30, () => sc.chroma],
+      ['DITHER'],
+      ['ditherStrength', 25, o => o.mode !== 'shape' && o.dither !== 'none' && (o.mode !== 'edges' || o.edgeBlend)],
+      ['edgeThreshold', 10, o => o.mode === 'edges'],
+      ['brailleThreshold', 10, o => o.mode === 'braille'],
+      ['blankThreshold', 6, o => o.blankMode !== 'off'],
+      ['TOGGLES'],
+    ];
+
+    async function refine(start, end) {
+      let best = start, peak = start.s;
+      const consider = c => {
+        if (!c || !better(c, best, peak)) return false;
+        best = c; if (c.s > peak) peak = c.s;
+        return true;
+      };
+      for (let pass = 0; pass < 3; pass++) {
+        const f = [1, 0.5, 0.25][pass];
+        for (const [k, step, applies] of ORDER) {
+          if (used >= end) return best;
+          if (k === 'DITHER') {
+            const o = best.o;
+            if (pass || o.mode === 'shape' || (o.mode === 'edges' && !o.edgeBlend)) continue;
+            for (const d of ['none', 'fs', 'atkinson', 'bayer4']) if (d !== best.o.dither) consider(await tryO({ ...best.o, dither:d }, end));
+            continue;
+          }
+          if (k === 'TOGGLES') {
+            if (pass) continue;
+            for (const patch of toggles(best.o)) consider(await tryO({ ...best.o, ...patch }, end));
+            continue;
+          }
+          if (applies && !applies(best.o)) continue;
+          if (!pass && k in NEUTRAL && best.o[k] !== NEUTRAL[k]) consider(await tryO({ ...best.o, [k]:NEUTRAL[k] }, end));
+          const d = Math.max(lim[k].step, step * f), v = best.o[k];
+          let moved = 0;
+          for (const dir of [-1, 1]) {
+            const nv = fit(k, v + dir * d);
+            if (nv !== v && consider(await tryO({ ...best.o, [k]:nv }, end))) { moved = dir; break; }
+          }
+          if (moved) {                                        // one more step in the winning direction
+            const nv = fit(k, best.o[k] + moved * d);
+            if (nv !== best.o[k]) consider(await tryO({ ...best.o, [k]:nv }, end));
+          }
+        }
+      }
+      return best;
+    }
+
+    const baseC = await tryO(base, Infinity);
+    const start = { ...base };
+    for (const k of ['brightness', 'contrast', 'gamma', 'sharpen', 'blur', 'blankThreshold']) start[k] = fit(k, sug[k]);
+    start.autoLevels = sug.autoLevels; start.blankMode = sug.blankMode;
+    if (base.mode !== 'shape') start.reverse = sug.reverse;
+    const startC = await tryO(start, Infinity);
+    const seed = startC.s >= baseC.s ? startC : baseC;
+
+    let best;
+    if (m.scope === 'full') {
+      const pairs = [];
+      for (const mode of ['brightness', 'shape', 'braille', 'blocks', 'edges']) {
+        const sets = mode === 'brightness' || mode === 'edges' ? ['standard', 'detailed', 'simple', 'blocks'] : [base.charset];
+        for (const cs of sets) pairs.push({ mode, charset:cs });
+      }
+      if (!pairs.some(p => p.mode === base.mode && p.charset === base.charset)) pairs.push({ mode:base.mode, charset:base.charset });
+      const screened = [];
+      for (const p of pairs) {
+        const o = { ...seed.o, ...p };
+        if (p.mode === 'braille' && o.dither === 'none') o.dither = 'atkinson';   // braille without dithering is a hard threshold
+        if (p.mode === 'shape') o.reverse = base.reverse;                         // Reverse is hidden in Shape mode
+        screened.push(await tryO(o, Infinity));
+      }
+      screened.sort((a, b) => b.s - a.s);                                         // stable → deterministic
+      const fin = [];
+      for (const c of screened) {
+        if (!fin.some(f => f.o.mode === c.o.mode && f.o.charset === c.o.charset)) fin.push(c);
+        if (fin.length === 2) break;
+      }
+      const a = await refine(fin[0], used + Math.floor((budget - used) / 2));
+      const b = fin[1] ? await refine(fin[1], budget) : a;
+      best = b.s > a.s + (b.cx > a.cx ? 1 : 0) ? b : a;
+    } else {
+      best = await refine(seed, budget);
+    }
+    if (best !== baseC && better(baseC, best, best.s)) best = baseC;
+    return {
+      improved:best !== baseC && best.s >= baseC.s + 2,
+      baseScore:baseC.s, bestScore:best.s, best:best.o, evaluated:used, total:budget, info,
+    };
+  }
+
+  return { process, render, magic, cancelMagic };
+}
+
+/* ---------- Worker plumbing (inline Blob, with main-thread fallback) ---------- */
+let worker = null, core = null;
+function initWorker() {
+  try {
+    const src = `const core = (${asciiCore.toString()})();
+self.onmessage = e => {
+  const m = e.data;
+  if (m.type === 'magic') { core.magic(m, d => self.postMessage(d)); return; }
+  if (m.type === 'magicCancel') { core.cancelMagic(m.runId); return; }
+  let r;
+  try { r = core.render(m); } catch (err) { r = { id:m.id, error:String(err && err.message || err) }; }
+  self.postMessage(r, r.colors ? [r.colors.buffer] : []);
+};`;
+    const url = URL.createObjectURL(new Blob([src], { type:'text/javascript' }));
+    worker = new Worker(url);
+    worker.onmessage = e => route(e.data);
+    worker.onerror = e => { e.preventDefault && e.preventDefault(); fallbackToMain(); };
+  } catch (e) { fallbackToMain(); }
+}
+function fallbackToMain() {
+  if (worker) { try { worker.terminate(); } catch (e) {} }
+  worker = null;
+  core = core || asciiCore();
+  if (magic.running) { endMagicUI(); setStatus('err', 'Magic touch stopped — please try again.'); }
+  if (busy) { busy = false; scheduleRender(true); }
+}
+/** Messages from the worker (or the main-thread fallback): renders and Magic touch progress. */
+function route(d) {
+  switch (d && d.type) {
+    case 'magicProgress': onMagicProgress(d); break;
+    case 'magicDone': onMagicDone(d); break;
+    case 'magicError': onMagicError(d); break;
+    case 'magicCancelled': break;
+    default: onResult(d);
+  }
+}
+function postJob(msg) {
+  if (worker) worker.postMessage(msg, msg.ref ? [msg.buffer, msg.ref.buffer] : [msg.buffer]);
+  else setTimeout(() => {
+    let r;
+    try { r = core.render(msg); } catch (err) { r = { id:msg.id, error:String(err && err.message || err) }; }
+    onResult(r);
+  }, 0);
+}
+function postMagic(msg) {
+  if (worker) worker.postMessage(msg, [msg.src.buffer]);
+  else core.magic(msg, d => setTimeout(() => route(d), 0));
+}
+function postMagicCancel(runId) {
+  if (worker) worker.postMessage({ type:'magicCancel', runId });
+  else if (core) core.cancelMagic(runId);
+}
+
+/* ---------- Glyph bitmaps for Shape mode (rendered in the chosen font) ---------- */
+const GX = 4, GY = 8;   // must match MODES.shape.sx / sy
+const glyphStore = new Map();
+
+/** Rasterise characters in the chosen font into raw GX×GY coverage bitmaps (0..1). */
+function rasterGlyphs(chars, met) {
+  const S = 48, cw = Math.max(GX, Math.round(met.charW / state.fontSize * S)), ch = Math.max(GY, Math.round(S * state.lineHeight));
+  const c = makeCanvas(cw, ch), ctx = c.getContext('2d', { willReadFrequently:true });
+  const D = GX * GY, bitmaps = new Float32Array(chars.length * D), means = new Float32Array(chars.length);
+  chars.forEach((g, gi) => {
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cw, ch);
+    ctx.fillStyle = '#fff'; ctx.font = `${met.weight} ${S}px ${met.stack}`; ctx.textBaseline = 'middle';
+    ctx.fillText(g, 0, ch / 2);
+    const d = ctx.getImageData(0, 0, cw, ch).data;
+    let sum = 0;
+    for (let gy = 0; gy < GY; gy++) for (let gx = 0; gx < GX; gx++) {
+      const x0 = Math.floor(gx * cw / GX), x1 = Math.floor((gx + 1) * cw / GX);
+      const y0 = Math.floor(gy * ch / GY), y1 = Math.floor((gy + 1) * ch / GY);
+      let s = 0, k = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { s += d[(y * cw + x) * 4]; k++; }
+      const v = k ? s / k / 255 : 0;
+      bitmaps[gi * D + gy * GX + gx] = v; sum += v;
+    }
+    means[gi] = sum / D;
+  });
+  return { bitmaps, means };
+}
+
+function getGlyphs(useCustom = state.charset === 'custom') {
+  const met = fontMetrics();
+  let chars;
+  if (useCustom) chars = Array.from(new Set(Array.from(customRamp())));
+  else { chars = []; for (let c = 32; c < 127; c++) chars.push(String.fromCharCode(c)); }
+  if (!chars.length) chars = [' '];
+  const key = `${met.font}|${state.lineHeight}|${chars.join('')}|${fontEpoch}`;
+  const hit = glyphStore.get(key);
+  if (hit) return hit;
+
+  const D = GX * GY, { bitmaps, means } = rasterGlyphs(chars, met);
+  let maxMean = 0;
+  for (let i = 0; i < means.length; i++) maxMean = Math.max(maxMean, means[i]);
+  // Scale coverage so the densest glyph reads as ~90% ink (glyphs never fill a whole cell).
+  const k = maxMean > 0 ? 0.9 / maxMean : 1;
+  for (let i = 0; i < bitmaps.length; i++) bitmaps[i] = Math.min(1, bitmaps[i] * k);
+  // Soften each glyph with a 3×3 box (clamped to its own cell) to match the softened image cells.
+  const tmp = new Float32Array(D);
+  for (let i = 0; i < chars.length; i++) {
+    const o = i * D;
+    for (let y = 0; y < GY; y++) for (let x = 0; x < GX; x++) {
+      let s = 0, c = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const yy = y + dy, xx = x + dx;
+        if (yy < 0 || yy >= GY || xx < 0 || xx >= GX) continue;
+        s += bitmaps[o + yy * GX + xx]; c++;
+      }
+      tmp[y * GX + x] = s / c;
+    }
+    let s = 0;
+    for (let j = 0; j < D; j++) { bitmaps[o + j] = tmp[j]; s += tmp[j]; }
+    means[i] = s / D;
+  }
+  const data = { key, chars, bitmaps, means, dim:D };
+  if (glyphStore.size > 6) glyphStore.clear();
+  glyphStore.set(key, data);
+  return data;
+}
+
+/**
+ * Coverage bitmaps for the clarity score: every printable ASCII glyph (ramps, edge
+ * characters / \ | - _) plus the Custom set, unsoftened, scaled so the densest ASCII
+ * glyph reads as ~90 % ink like getGlyphs(). Blocks and braille are exact in the core.
+ */
+const ANALYTIC_CH = /^[ ⠀-⣿░▒▓█▀▄]$/;
+let scoreGlyphData = { key:'', data:null };
+function scoreGlyphs() {
+  const met = fontMetrics(), set = new Set();
+  for (let c = 33; c < 127; c++) set.add(String.fromCharCode(c));
+  if (state.charset === 'custom') for (const ch of customRamp()) if (!ANALYTIC_CH.test(ch)) set.add(ch);
+  const chars = [...set];
+  const key = `score|${met.font}|${state.lineHeight}|${chars.join('')}|${fontEpoch}`;
+  if (scoreGlyphData.key === key) return scoreGlyphData.data;
+  const { bitmaps, means } = rasterGlyphs(chars, met);
+  let maxMean = 0;
+  for (let i = 0; i < 94; i++) maxMean = Math.max(maxMean, means[i]);   // printable ASCII only
+  const k = maxMean > 0 ? 0.9 / maxMean : 1;
+  for (let i = 0; i < bitmaps.length; i++) bitmaps[i] = Math.min(1, bitmaps[i] * k);
+  const data = { key, chars, bitmaps };
+  scoreGlyphData = { key, data };
+  return data;
+}
+const hexRgb = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+function scoreContext() {
+  const { fg, bg } = outColors();
+  return { glyphs:scoreGlyphs(), outBg:hexRgb(bg), outFg:hexRgb(fg), chroma:state.colorMode === 'full' || state.colorMode === 'palette' };
+}
+const ANALYSIS_MAX_W = 200;          // keep in sync with analysisSize() inside asciiCore()
+function analysisSize(cols, rows) {
+  const w = Math.min(cols * 2, ANALYSIS_MAX_W);
+  return { w, h:Math.max(1, Math.round(w * 2 * rows / cols)) };
+}
+/** Output grid for a given width (same formula for renders, Magic touch and Shrink to fit). */
+function gridSize(colsIn) {
+  const cols = clamp(Math.round(colsIn), 20, 600);
+  return { cols, rows:Math.max(1, Math.round(cols * orientCanvas.height / orientCanvas.width * effectiveAspect())) };
+}
+
+/* ---------- Render scheduling ---------- */
+let reqId = 0, busy = false, pending = false, lastResult = null, jobStart = 0;
+const debouncedRender = debounce(doRender, 60);
+function scheduleRender(now) { if (now) doRender(); else debouncedRender(); }
+
+function doRender() {
+  if (!orientCanvas) return;
+  if (busy) { pending = true; return; }
+  const mode = MODES[state.mode] || MODES.brightness;
+  const { cols, rows } = gridSize(state.cols);
+  const sw = cols * mode.sx, sh = rows * mode.sy;
+  const img = sampleImage(sw, sh);
+  const A = analysisSize(cols, rows), ref = sampleImage(A.w, A.h);   // ORIGINAL pixels for the clarity score
+  const { bg } = outColors();
+  const msg = {
+    id: ++reqId, w:sw, h:sh, cols, rows, sx:mode.sx, sy:mode.sy, buffer:img.data.buffer,
+    o: {
+      mode:state.mode, brightness:state.brightness, contrast:state.contrast, gamma:state.gamma,
+      saturation:state.saturation, sharpen:state.sharpen, blur:state.blur, invert:state.invert,
+      autoLevels:state.autoLevels, blankMode:state.blankMode, blankThreshold:state.blankThreshold,
+      ramp:currentRamp(), reverse:state.reverse, dither:state.mode === 'shape' ? 'none' : state.dither,
+      ditherStrength:state.ditherStrength, edgeThreshold:state.edgeThreshold, edgeBlend:state.edgeBlend,
+      brailleThreshold:state.brailleThreshold, colorMode:state.colorMode, paletteSize:state.paletteSize,
+      darkBg: hexLum(bg) < 0.5,
+    },
+    ref:{ buffer:ref.data.buffer, w:A.w, h:A.h, key:`${orientEpoch}|${A.w}x${A.h}|${bg}` },
+    score:scoreContext(),
+  };
+  if (state.mode === 'shape') msg.glyphs = getGlyphs();
+  busy = true; jobStart = performance.now();
+  setStatus('busy', 'Rendering…');
+  postJob(msg);
+}
+
+function onResult(r) {
+  busy = false;
+  if (r.error) { setStatus('err', 'Render failed: ' + r.error); }
+  else {
+    lastResult = r;
+    renderPreview();
+    const total = performance.now() - jobStart;
+    $('#timing').textContent = `${Math.round(total)} ms`;
+    paintClarity(r);
+    paintCopyHints();
+    setStatus('ok', 'Ready.');
+    if (magic.confirm && r.id > magic.confirm.afterReq) finishMagic(r);
+  }
+  if (pending) { pending = false; doRender(); }
+}
+
+/* =====================================================================
+   JS 3c. MAGIC TOUCH — controller (main thread)
+   Sends the ORIGINAL pixels to the worker once per run, streams progress
+   into the button + status line, applies the winner with ONE set() call,
+   then confirms the gain on the full-size render before announcing it.
+   ===================================================================== */
+const MAGIC_SCOPES = {
+  tune: { label:'Tune image only', hint:'Tone, sharpness, dithering, thresholds. Keeps your mode, characters, colours, font and width.' },
+  full: { label:'Full auto', hint:'Also tries the other rendering modes and character sets.' },
+};
+const MAGIC_KEYS = ['mode','charset','brightness','contrast','gamma','saturation','sharpen','blur','autoLevels','invert','reverse',
+                    'blankMode','blankThreshold','dither','ditherStrength','edgeThreshold','edgeBlend','brailleThreshold'];
+const MAGIC_EVAL_COLS = 100;
+const MAGIC_BUDGET = { tune:64, full:80 };
+const DITHER_LABELS = { none:'No dithering', fs:'Floyd–Steinberg', atkinson:'Atkinson', bayer4:'Bayer 4×4', bayer8:'Bayer 8×8' };
+const BLANK_LABELS = { white:'near-white', black:'near-black', both:'near-white & black' };
+const magic = { running:false, runId:0, done:0, total:0, snapshot:null, confirm:null };
+let clarityPrev = null;
+
+function runMagic(scope = state.magicScope) {
+  if (magic.running) cancelMagic('Magic touch restarted.');
+  if (scope !== state.magicScope) set({ magicScope:scope });
+  if (!orientCanvas || !lastResult) { toast('Wait for the preview to finish first.', true); return; }
+  const g = gridSize(state.cols), ev = gridSize(Math.min(g.cols, MAGIC_EVAL_COLS));
+  const img = sampleImage(ev.cols * 4, ev.rows * 8);
+  const { bg } = outColors();
+  const lim = {};
+  for (const k of MAGIC_KEYS) if (SLIDERS[k]) lim[k] = { min:SLIDERS[k].min, max:SLIDERS[k].max, step:SLIDERS[k].step };
+  const ramps = {};
+  for (const k in CHARSETS) ramps[k] = k === 'custom' ? customRamp() : CHARSETS[k].ramp;
+  const modes = {};
+  for (const k in MODES) modes[k] = [MODES[k].sx, MODES[k].sy];
+
+  magic.runId++; magic.running = true; magic.done = 0; magic.total = MAGIC_BUDGET[scope];
+  magic.snapshot = pick([...MAGIC_KEYS, 'preset'], state); magic.confirm = null;
+  const msg = {
+    type:'magic', runId:magic.runId, scope, budget:magic.total, cols:ev.cols, rows:ev.rows,
+    src:{ buffer:img.data.buffer, w:ev.cols * 4, h:ev.rows * 8 }, keys:MAGIC_KEYS, base:pick(MAGIC_KEYS, state),
+    lim, ramps, modes, glyphs:{ ascii:getGlyphs(false), custom:state.charset === 'custom' ? getGlyphs(true) : null },
+    score:scoreContext(), darkBg:hexLum(bg) < 0.5, colorMode:state.colorMode, paletteSize:state.paletteSize,
+  };
+  $('#status').setAttribute('aria-busy', 'true');    // hold screen-reader announcements until the result
+  $('#magicCancel').hidden = false;
+  paintMagic();
+  setStatus('busy', `Magic touch: testing 0 / ${magic.total} candidates`);
+  postMagic(msg);
+}
+function endMagicUI() {
+  magic.running = false;
+  $('#status').removeAttribute('aria-busy');
+  $('#magicCancel').hidden = true;
+  paintMagic();
+}
+function cancelMagic(reason = 'Magic touch cancelled.') {
+  if (!magic.running) return;
+  postMagicCancel(magic.runId);
+  endMagicUI();
+  setStatus('ok', reason);
+}
+function onMagicProgress(d) {
+  if (!magic.running || d.runId !== magic.runId) return;
+  magic.done = d.done; magic.total = d.total;
+  paintMagic();
+  setStatus('busy', `Magic touch: testing ${d.done} / ${d.total} candidates`);
+}
+function onMagicError(d) {
+  if (!magic.running || d.runId !== magic.runId) return;
+  endMagicUI();
+  setStatus('err', 'Magic touch failed: ' + d.error);
+  toast('Magic touch failed — your settings are unchanged.', true);
+}
+function onMagicDone(d) {
+  if (!magic.running || d.runId !== magic.runId) return;
+  magic.lastInfo = d;                                    // handy for debugging in the console
+  magic.done = magic.total;
+  endMagicUI();
+  const patch = {};
+  if (d.improved) for (const k of MAGIC_KEYS) if (d.best[k] !== state[k]) patch[k] = d.best[k];
+  if (state.magicScope !== 'full') { delete patch.mode; delete patch.charset; if (!state.invert) delete patch.invert; }
+  if (!Object.keys(patch).length) { magicNoGain(d.baseScore); return; }
+  magic.confirm = {
+    before:lastResult && lastResult.clarity != null ? lastResult.clarity : d.baseScore,
+    prev:magic.snapshot, summary:describeMagic(magic.snapshot, { ...state, ...patch }), afterReq:reqId,
+  };
+  set({ ...patch, preset:null }, { keepPreset:true, fromMagic:true });   // ONE set() call
+  setStatus('busy', 'Magic touch: rendering the result…');
+}
+function magicNoGain(score) {
+  const s = Math.round(lastResult && lastResult.clarity != null ? lastResult.clarity : score);
+  setStatus('ok', `Magic touch: already looking its best (clarity ${s}).`);
+  setMagicSummary(`Already looking its best · clarity ${s}`);
+  toast(`Already looking its best — clarity ${s}`);
+}
+/** The winner was rendered at full size: announce it (or roll back if the gain didn't hold). */
+function finishMagic(r) {
+  const c = magic.confirm; magic.confirm = null;
+  const before = Math.round(c.before), after = r.clarity == null ? null : Math.round(r.clarity);
+  if (after != null && after <= before) {
+    set({ ...c.prev }, { keepPreset:true, fromMagic:true });
+    magicNoGain(c.before);
+    return;
+  }
+  const undo = () => {
+    set({ ...c.prev }, { keepPreset:true });
+    setMagicSummary('Undone — back to your previous settings.');
+    toast('Magic touch undone');
+  };
+  setMagicSummary(c.summary);
+  setStatus('ok', `Magic touch: clarity ${before} → ${after ?? '?'}. ${c.summary}`);
+  toast(`Clarity ${before} → ${after ?? '?'}`, false, { action:{ label:'Undo', fn:undo }, ms:9000 });
+}
+function setMagicSummary(text) {
+  const el = $('#magicSummary');
+  el.textContent = text; el.title = text; el.hidden = !text;
+}
+/** "Contrast +22 · Gamma 0.85 · Sharpen 40% · Floyd–Steinberg 60%" */
+function describeMagic(a, b) {
+  const p = [], ch = k => a[k] !== b[k];
+  if (ch('mode')) p.push(`${MODES[b.mode].label} mode`);
+  if (ch('charset')) p.push(`${CHARSETS[b.charset].label} characters`);
+  for (const k of ['contrast','gamma','brightness','saturation','sharpen','blur']) if (ch(k)) p.push(`${SLIDERS[k].label} ${SLIDERS[k].fmt(b[k])}`);
+  if (ch('autoLevels')) p.push(`Auto-levels ${b.autoLevels ? 'on' : 'off'}`);
+  if (ch('invert')) p.push(`Invert ${b.invert ? 'on' : 'off'}`);
+  if (ch('reverse')) p.push(`Reverse ramp ${b.reverse ? 'on' : 'off'}`);
+  if (ch('blankMode') || (b.blankMode !== 'off' && ch('blankThreshold'))) p.push(b.blankMode === 'off' ? 'Blank background off' : `Blank ${BLANK_LABELS[b.blankMode]} ${b.blankThreshold}%`);
+  if (b.mode !== 'shape' && (ch('dither') || (b.dither !== 'none' && ch('ditherStrength')))) p.push(b.dither === 'none' ? 'No dithering' : `${DITHER_LABELS[b.dither]} ${b.ditherStrength}%`);
+  if (ch('edgeThreshold')) p.push(`Edge threshold ${b.edgeThreshold}`);
+  if (ch('edgeBlend')) p.push(`Edge blend ${b.edgeBlend ? 'on' : 'off'}`);
+  if (ch('brailleThreshold')) p.push(`Dot threshold ${b.brailleThreshold}%`);
+  return p.join(' · ') || 'Fine-tuned';
+}
+function paintMagic() {
+  const pctDone = magic.total ? Math.round(magic.done / magic.total * 100) : 0, sc = MAGIC_SCOPES[state.magicScope];
+  $$('[data-magic-main]').forEach(b => {
+    b.dataset.running = String(magic.running);
+    if (magic.running) {
+      b.innerHTML = `<span class="spin" aria-hidden="true"></span>Tuning… ${pctDone}%`;
+      b.setAttribute('aria-label', `Cancel Magic touch, ${pctDone}% done`);
+      b.title = 'Click to cancel';
+    } else {
+      b.innerHTML = `<span aria-hidden="true">✨</span> Magic touch${b.dataset.magicMain === 'big' ? ` <span class="sub">· ${sc.label}</span>` : ''}`;
+      b.removeAttribute('aria-label');
+      b.title = `Find the clearest settings for this image (${sc.label})`;
+    }
+  });
+  $$('[data-magic-menu] [role="menuitemradio"]').forEach(it => it.setAttribute('aria-checked', String(it.dataset.value === state.magicScope)));
+}
+function paintClarity(r) {
+  const el = $('#clarity'), dl = $('#clarityDelta');
+  if (r.clarity == null) { el.textContent = 'Clarity —'; dl.textContent = ''; return; }
+  const v = Math.round(r.clarity), prev = clarityPrev;
+  clarityPrev = v;
+  el.textContent = `Clarity ${v}`;
+  const d = prev == null ? 0 : v - prev;
+  dl.textContent = d ? (d > 0 ? '▲' : '▼') + Math.abs(d) : '';
+  dl.className = 'delta' + (d > 0 ? ' up' : d < 0 ? ' down' : '');
+}
+
+/* =====================================================================
+   JS 4. PREVIEW (pre / spans / canvas) + ZOOM & PAN + COMPARE
+   ===================================================================== */
+const viewport = $('#viewport'), stage = $('#stage'), art = $('#art');
+const view = { scale:1, x:0, y:0, fit:true };
+let stageW = 1, stageH = 1, compareOn = false;
+const SPAN_LIMIT = 12000;   // above this many cells, colour output uses a canvas
+
+const isBlankCh = ch => ch === ' ' || ch === '⠀';
+const BRAILLE_BITS = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]]; // [row][col], same as the core
+function escChar(ch) { return ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '&' ? '&amp;' : ch; }
+function cellHex(colors, i) { return '#' + HEX[colors[i]] + HEX[colors[i + 1]] + HEX[colors[i + 2]]; }
+
+/** HTML with one <span> per run of same-coloured characters. */
+function colorRunsHTML(r) {
+  const { lines, colors, cols } = r;
+  let html = '';
+  for (let y = 0; y < lines.length; y++) {
+    const line = lines[y]; let cur = -1;
+    for (let x = 0; x < line.length; x++) {
+      const ch = line[x];
+      if (isBlankCh(ch)) { html += ch; continue; }
+      const i = (y * cols + x) * 3, key = colors[i] << 16 | colors[i + 1] << 8 | colors[i + 2];
+      if (key !== cur) { if (cur !== -1) html += '</span>'; html += `<span style="color:${cellHex(colors, i)}">`; cur = key; }
+      html += escChar(ch);
+    }
+    if (cur !== -1) html += '</span>';
+    if (y < lines.length - 1) html += '\n';
+  }
+  return html;
+}
+
+/** Draw the art onto a canvas (used for preview of big colour output, PNG and clipboard). */
+function drawArt(r, { scale = 1, padding = 0, transparent = false } = {}) {
+  const met = fontMetrics(), { fg, bg } = outColors();
+  const cw = met.cellW, lh = met.lineH;
+  const W = r.cols * cw + padding * 2, H = r.rows * lh + padding * 2;
+  const c = makeCanvas(Math.round(W * scale), Math.round(H * scale)), ctx = c.getContext('2d');
+  ctx.setTransform(scale, 0, 0, scale, 0, 0);
+  if (!transparent) { ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); }
+  ctx.font = met.font; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const ov = 0.6 / scale;    // tiny overlap so solid blocks tile without seams
+  const SHADE = { '░':0.25, '▒':0.5, '▓':0.75 };
+  const dw = cw / 2, dh = lh / 4, dotR = Math.max(0.35 / scale, Math.min(dw, dh) * 0.36);
+  let last = null;
+  const { lines, colors, cols } = r;
+  for (let y = 0; y < lines.length; y++) {
+    const line = lines[y], py = padding + y * lh, my = py + lh / 2;
+    for (let x = 0; x < line.length; x++) {
+      const ch = line[x];
+      if (isBlankCh(ch)) continue;
+      const col = colors ? cellHex(colors, (y * cols + x) * 3) : fg;
+      if (col !== last) { ctx.fillStyle = col; last = col; }
+      const px = padding + x * cw, code = ch.charCodeAt(0);
+      if (code > 0x2800 && code <= 0x28ff) {
+        // braille: draw the dots ourselves so the grid never depends on font fallback
+        const bits = code - 0x2800;
+        ctx.beginPath();
+        for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 2; dx++) {
+          if (!(bits & BRAILLE_BITS[dy][dx])) continue;
+          const cx = px + dw * (dx + 0.5), cy = py + dh * (dy + 0.5);
+          ctx.moveTo(cx + dotR, cy); ctx.arc(cx, cy, dotR, 0, Math.PI * 2);
+        }
+        ctx.fill();
+      }
+      else if (ch === '█') ctx.fillRect(px, py, cw + ov, lh + ov);
+      else if (ch === '▀') ctx.fillRect(px, py, cw + ov, lh / 2 + ov);
+      else if (ch === '▄') ctx.fillRect(px, py + lh / 2, cw + ov, lh / 2 + ov);
+      else if (SHADE[ch]) { ctx.globalAlpha = SHADE[ch]; ctx.fillRect(px, py, cw + ov, lh + ov); ctx.globalAlpha = 1; }
+      else ctx.fillText(ch, px, my);
+    }
+  }
+  return c;
+}
+
+function renderPreview() {
+  const r = lastResult; if (!r) return;
+  const met = fontMetrics(), { fg, bg } = outColors();
+  stageW = r.cols * met.cellW; stageH = r.rows * met.lineH;
+  art.style.width = stageW + 'px'; art.style.height = stageH + 'px';
+  art.style.background = bg; stage.style.background = bg;
+  art.textContent = '';
+  // Canvas when: big colour output (speed) or the font can't keep braille/blocks on the grid.
+  if ((r.colors && r.cols * r.rows > SPAN_LIMIT) || !glyphsUniform(r.mode)) {
+    const dpr = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
+    const maxScale = Math.sqrt(48e6 / Math.max(1, stageW * stageH));
+    const c = drawArt(r, { scale:Math.max(0.5, Math.min(dpr * 1.5, maxScale)) });
+    c.style.width = stageW + 'px'; c.style.height = stageH + 'px';
+    c.setAttribute('role', 'img'); c.setAttribute('aria-label', 'Colour ASCII art (canvas). Use Copy text to get the characters.');
+    art.appendChild(c);
+    // Invisible, selectable text layer with identical cell metrics so drag-select still works.
+    // If the font lacks these glyphs, stand-in ASCII keeps the grid; the 'copy' handler maps the
+    // selection back to the real characters anyway.
+    const sel = document.createElement('pre');
+    sel.className = 'sel-layer'; sel.setAttribute('aria-hidden', 'true');
+    sel.style.font = `${met.weight} ${met.size}px/${met.lineH}px ${met.stack}`;
+    sel.style.letterSpacing = state.letterSpacing + 'px';
+    sel.textContent = glyphsUniform(r.mode) ? r.lines.join('\n') : r.lines.map(l => l.replace(/[^\x20-\x7e]/g, ch => isBlankCh(ch) ? ' ' : '#')).join('\n');
+    art.appendChild(sel);
+  } else {
+    const pre = document.createElement('pre');
+    pre.style.font = `${met.weight} ${met.size}px/${met.lineH}px ${met.stack}`;
+    pre.style.letterSpacing = state.letterSpacing + 'px';
+    pre.style.color = fg;
+    if (r.colors) pre.innerHTML = colorRunsHTML(r);
+    else pre.textContent = r.lines.join('\n');
+    art.appendChild(pre);
+  }
+  if (view.fit) fitView(); else applyView();
+  updateMeta();
+}
+
+function updateMeta() {
+  const r = lastResult; if (!r) return;
+  let label;
+  switch (state.mode) {
+    case 'brightness': label = `${CHARSETS[state.charset].label} ramp`; break;
+    case 'edges': label = state.edgeBlend ? 'Edges + ramp' : 'Edges'; break;
+    case 'blocks': label = 'Blocks'; break;
+    case 'braille': label = 'Braille'; break;
+    default: label = 'Shape match';
+  }
+  if (state.dither !== 'none' && state.mode !== 'shape') label += ' · dithered';
+  if (COLOR_LABELS[state.colorMode]) label += ' · ' + COLOR_LABELS[state.colorMode];
+  $('#meta').textContent = `${r.cols} × ${r.rows} chars · ${fmtInt(r.cols * r.rows)} glyphs · ${label}`;
+}
+
+/* zoom & pan */
+const overflows = () => stageW * view.scale > viewport.clientWidth + 1 || stageH * view.scale > viewport.clientHeight + 1;
+function clampView() {
+  const vw = viewport.clientWidth, vh = viewport.clientHeight, cw = stageW * view.scale, ch = stageH * view.scale, m = 40;
+  view.x = cw <= vw ? (vw - cw) / 2 : clamp(view.x, vw - cw - m, m);
+  view.y = ch <= vh ? (vh - ch) / 2 : clamp(view.y, vh - ch - m, m);
+}
+function applyView() {
+  if (!view.fit) clampView();
+  stage.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+  stage.style.setProperty('--s', view.scale);
+  $('#zoomVal').textContent = Math.round(view.scale * 100) + '%';
+  viewport.classList.toggle('pannable', overflows());
+}
+function fitView() {
+  const vw = viewport.clientWidth, vh = viewport.clientHeight, pad = 16;
+  view.scale = clamp(Math.min((vw - pad * 2) / stageW, (vh - pad * 2) / stageH), 0.05, 6);
+  view.x = (vw - stageW * view.scale) / 2; view.y = (vh - stageH * view.scale) / 2;
+  view.fit = true; applyView();
+}
+function setZoom(s, cx = viewport.clientWidth / 2, cy = viewport.clientHeight / 2) {
+  s = clamp(s, 0.05, 16);
+  const k = s / view.scale;
+  view.x = cx - (cx - view.x) * k; view.y = cy - (cy - view.y) * k;
+  view.scale = s; view.fit = false; applyView();
+}
+function zoom100() {
+  view.scale = 1; view.fit = false;
+  view.x = 16; view.y = 16; applyView();
+}
+
+/* compare overlay */
+function updateCompareImage() {
+  if (!orientCanvas) return;
+  if (compareUrl) { $('#origImg').src = compareUrl; return; }
+  orientCanvas.toBlob(b => { if (!b) return; compareUrl = URL.createObjectURL(b); $('#origImg').src = compareUrl; });
+}
+let splitPct = 50;              // compare bar position, % from the left
+function applySplit(v = splitPct) {
+  splitPct = clamp(Math.round(v * 10) / 10, 0, 100);
+  art.style.clipPath = compareOn ? `inset(0 0 0 ${splitPct}%)` : '';
+  const d = $('#divider');
+  d.style.left = splitPct + '%';
+  d.setAttribute('aria-valuenow', String(Math.round(splitPct)));
+  d.setAttribute('aria-valuetext', `${Math.round(splitPct)}% original`);
+}
+function setCompare(on) {
+  compareOn = on;
+  $('#compareBtn').setAttribute('aria-pressed', String(on));
+  stage.classList.toggle('compare', on);
+  if (on) updateCompareImage();
+  applySplit();
+  if (on) $('#divider').focus({ preventScroll:true });
+}
+/** Drag the compare bar (pointer) or nudge it (arrows ±2 %, Shift ±10 %, Home / End). */
+function wireCompareBar() {
+  const d = $('#divider');
+  let dragId = null;
+  const toPct = e => { const r = stage.getBoundingClientRect(); return (e.clientX - r.left) / r.width * 100; };
+  d.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();                               // no text selection (the viewport's pan handler skips the bar)
+    dragId = e.pointerId; d.setPointerCapture(dragId); d.classList.add('active'); d.focus({ preventScroll:true });
+    applySplit(toPct(e));
+  });
+  d.addEventListener('pointermove', e => { if (e.pointerId === dragId) applySplit(toPct(e)); });
+  const end = e => { if (e.pointerId !== dragId) return; dragId = null; d.classList.remove('active'); };
+  d.addEventListener('pointerup', end);
+  d.addEventListener('pointercancel', end);
+  d.addEventListener('keydown', e => {
+    const step = e.shiftKey ? 10 : 2;
+    const k = { ArrowLeft:-step, ArrowDown:-step, ArrowRight:step, ArrowUp:step }[e.key];
+    if (k) { e.preventDefault(); e.stopPropagation(); applySplit(splitPct + k); }
+    else if (e.key === 'Home') { e.preventDefault(); applySplit(0); }
+    else if (e.key === 'End') { e.preventDefault(); applySplit(100); }
+  });
+}
+
+/* =====================================================================
+   JS 5. EXPORTERS
+   ===================================================================== */
+function requireResult() { if (!lastResult) { toast('Nothing to export yet.', true); return false; } return true; }
+function baseName() { return (srcInfo.sample ? 'ascii-art' : srcInfo.name.replace(/\.[^.]+$/, '') + '-ascii').replace(/[^\w.-]+/g, '_'); }
+
+/* =====================================================================
+   JS 5b. COPY TARGETS — text that keeps its layout wherever it's pasted
+   Rules for every copy and for Save .txt:
+     • exactly `rows` lines joined with "\n" (CRLF only for Save .txt, opt-in)
+     • leading spaces always survive; blank lines are kept, never dropped
+     • Plain text / Code block strip trailing spaces (option); Word/Docs,
+       Social and HTML pad every line to the full width (apps may centre text)
+     • never tabs, zero-width, combining marks, emoji or wide characters
+   ===================================================================== */
+const COPY_TARGETS = {
+  plain:  { label:'Plain text', hint:'Notepad, code editors, terminals. Exact characters, \\n line breaks.',
+            done:'as plain text — paste into Notepad, a code editor or a terminal' },
+  code:   { label:'Code block', hint:'Discord, GitHub, Slack, Reddit, Teams. Wrapped in a Markdown ``` fence.',
+            done:'as a code block — paste straight into Discord, GitHub or Slack' },
+  rich:   { label:'Word / Google Docs / Email', short:'Word / Docs', hint:'Formatted monospace (Consolas) sized to fit the page.',
+            done:'for Word / Docs / email — paste with Ctrl+V and keep the formatting' },
+  social: { label:'Social / chat without code blocks', short:'Social', hint:'Instagram, X, YouTube comments, Discord outside code. Best for Braille mode.',
+            done:'with braille blanks — paste into your post or comment' },
+  html:   { label:'HTML snippet', short:'HTML', hint:'A self-contained <pre> block to paste into a website.',
+            done:'as an HTML snippet — paste it into your page’s HTML' },
+};
+const rstrip = l => l.replace(/[ ⠀]+$/, '');
+
+/** The art as exactly `rows` lines: stripped (plain/code/txt) or padded to the full width. */
+function artLines(pad) {
+  const r = lastResult;
+  return r.lines.map(l => {
+    l = l.replace(UNSAFE_ALL, ' ');
+    if (pad) return l.length < r.cols ? l + ' '.repeat(r.cols - l.length) : l;
+    return state.stripTrailing ? rstrip(l) : l;
+  });
+}
+/** A Markdown fence one backtick longer than the longest run inside (minimum ```). */
+function fenceFor(text) {
+  let n = 0;
+  for (const m of text.matchAll(/`+/g)) n = Math.max(n, m[0].length);
+  return '`'.repeat(Math.max(3, n + 1));
+}
+/** Word / Docs: pick 6–10 px so `cols` Consolas characters fit ~16 cm (≈605 CSS px; advance ≈ 0.55 em). */
+const richFontPx = cols => clamp(Math.floor(605 / (cols * 0.55)), 6, 10);
+
+function buildRichHTML(lines, px) {
+  const r = lastResult, { fg, bg } = outColors();
+  const style = `font-family:Consolas,'Courier New',monospace;font-size:${px}px;line-height:1;letter-spacing:0;`
+    + `white-space:pre;margin:0;padding:6px;background:${bg};color:${fg};font-weight:${state.bold ? 700 : 400}`;
+  return `<pre style="${style}">${r.colors ? colorRunsHTML(r) : esc(lines.join('\n'))}</pre>`;
+}
+/** Like buildHTML() but just the block, for pasting into an existing page. */
+function buildSnippet() {
+  const r = lastResult, met = fontMetrics(), { fg, bg } = outColors(), fixed = !glyphsUniform(r.mode);
+  const body = fixed ? gridCellsHTML(r) : r.colors ? colorRunsHTML(r) : esc(r.lines.join('\n'));
+  const pre = `margin:0;padding:${state.pngPadding}px;background:${bg};color:${fg};`
+    + `font:${met.weight} ${met.size}px/${met.lineH}px ${met.stack.replace(/"/g, "'")};letter-spacing:${fixed ? 0 : state.letterSpacing}px;`
+    + `white-space:pre;overflow:auto;font-kerning:none;font-variant-ligatures:none`;
+  if (!fixed) return `<pre class="ascii-art" style="${pre}">${body}</pre>`;
+  return `<div class="ascii-art"><style>.ascii-art pre b{display:inline-block;width:${+met.cellW.toFixed(3)}px;height:${met.lineH}px;`
+    + `overflow:hidden;font-weight:inherit;text-align:center;vertical-align:top}</style><pre style="${pre}">${body}</pre></div>`;
+}
+
+/** Everything the clipboard gets for one destination. */
+function buildCopy(target = state.copyTarget) {
+  const r = lastResult;
+  let text, html = null, px = 0;
+  switch (target) {
+    case 'code': { const body = artLines(false).join('\n'), f = fenceFor(body); text = `${f}text\n${body}\n${f}`; break; }
+    case 'rich': { const lines = artLines(true); px = richFontPx(r.cols); text = lines.join('\n'); html = buildRichHTML(lines, px); break; }
+    case 'social': text = artLines(true).map(l => l.replace(/ /g, '⠀')).join('\n'); break;   // U+2800 can't be trimmed or collapsed
+    case 'html': text = buildSnippet(); break;
+    default: text = artLines(false).join('\n');
+  }
+  return { target, text, html, px, chars:text.length };
+}
+
+/** Write text (and optional HTML) to the clipboard. Returns 'rich', 'plain' or false. */
+let pendingClip = null;
+async function writeClipboard({ text, html }) {
+  try {
+    if (html && navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/plain':new Blob([text], { type:'text/plain' }), 'text/html':new Blob([html], { type:'text/html' }),
+      })]);
+      return 'rich';
+    }
+    if (!html && navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return 'plain'; }
+  } catch (e) { /* blocked or unsupported → the copy-event route below */ }
+  // Fallback: a synchronous copy event in which we set both flavours ourselves.
+  const back = document.activeElement, ta = document.createElement('textarea');
+  ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  pendingClip = { text, html };
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  pendingClip = null; ta.remove();
+  if (back && back.focus) back.focus({ preventScroll:true });
+  return ok ? (html ? 'rich' : 'plain') : false;
+}
+
+async function copyText(target = state.copyTarget) {
+  if (!requireResult()) return;
+  const c = buildCopy(target), r = lastResult, info = COPY_TARGETS[target];
+  const res = await writeClipboard(c);
+  if (!res) {
+    toast('The browser blocked the clipboard — use Save .txt instead.', true, { action:{ label:'Save .txt', fn:saveTxt }, ms:7000 });
+    return;
+  }
+  if (target === 'rich' && res !== 'rich') toast(`Copied ${r.cols} × ${r.rows} as plain text — this browser can’t copy formatting`, true);
+  else toast(`Copied ${r.cols} × ${r.rows} ${info.done}`);
+}
+
+/** Lower the width until the copy fits in one 2,000-character Discord message. */
+function shrinkToFit() {
+  if (!requireResult()) return;
+  const t = state.copyTarget, f = t === 'code' ? fenceFor(artLines(false).join('\n')).length : 0;
+  const overhead = t === 'code' ? 2 * f + 6 : 0;                           // "```text\n" + "\n```"
+  for (let c = Math.min(state.cols, 600); c >= 20; c--) {
+    const { rows } = gridSize(c);
+    if (rows * (c + 1) - 1 + overhead <= 2000) {                            // worst case: no trailing spaces stripped
+      set({ cols:c });
+      toast(`Width set to ${c} characters — fits in one Discord message`);
+      return;
+    }
+  }
+  toast('Even 20 characters wide is over Discord’s 2,000-character limit.', true);
+}
+
+function paintCopyTarget() {
+  const t = state.copyTarget, info = COPY_TARGETS[t] || COPY_TARGETS.plain, short = info.short || info.label;
+  $('#copyTargetLabel').textContent = ' · ' + short;
+  $('#copyText').setAttribute('aria-label', `Copy text for ${info.label}`);
+  $('#pvCopy').setAttribute('aria-label', `Copy text for ${info.label}`);
+  $('#pvCopy').title = `Copy text (${short})`;
+  $$('#copyMenu [role="menuitemradio"]').forEach(it => it.setAttribute('aria-checked', String(it.dataset.value === t)));
+  paintCopyHints();
+}
+/** Muted width hints under the Copy button, plus the Discord length check. */
+function paintCopyHints() {
+  const box = $('#copyHints'), r = lastResult, t = state.copyTarget, out = [];
+  if (t === 'code') out.push(`<p class="hint">Discord / Slack / Teams: over 80 chars may wrap on phones.${r && r.cols > 80 ? ` This is ${r.cols} wide.` : ''}</p>`);
+  if (t === 'social') {
+    out.push('<p class="hint">Most phones fit about 30–40 braille characters per line.</p>');
+    if (state.mode !== 'braille') out.push(`<p class="hint warn">Best in Braille mode${infoHTML('Social apps use proportional fonts, where letters and spaces have different widths. Braille characters all share one width, so only Braille art keeps its shape there; other modes will still distort.')}</p>`);
+  }
+  if (t === 'rich' && r) {
+    out.push(`<p class="hint">Pastes as Consolas ${richFontPx(r.cols)} px so ${r.cols} characters fit a 16 cm page.</p>`);
+    if (state.mode === 'braille') out.push('<p class="hint warn">Consolas and Courier have no braille, so Word may misalign Braille art.</p>');
+  }
+  if (r && (t === 'code' || t === 'social')) {
+    const n = buildCopy(t).chars;
+    if (n > 2000) out.push(`<div class="hint-row"><p class="hint warn">${fmtInt(n)} characters — over Discord’s 2,000 limit.</p><button type="button" class="btn sm" data-shrink>Shrink to fit</button></div>`);
+  }
+  box.innerHTML = out.join('');
+}
+
+/* =====================================================================
+   JS 5c. SELECTION COPY + CLIPBOARD PREVIEW
+   ===================================================================== */
+/**
+ * Copying a drag-selection from the preview: map the DOM selection to (line, column)
+ * in the grid and put clean text/plain on the clipboard. Colour spans and
+ * letter-spacing never add or drop characters. Multi-line selections snap to whole
+ * lines, because a partial first line would shift everything after it.
+ */
+function copySelection(e) {
+  const r = lastResult, sel = window.getSelection();
+  if (!r || !sel || sel.isCollapsed || !sel.rangeCount) return false;
+  const pre = art.querySelector('pre');
+  const range = sel.getRangeAt(0);
+  if (!pre || !range.intersectsNode(pre)) return false;
+  const whole = document.createRange(); whole.selectNodeContents(pre);
+  const sub = range.cloneRange();
+  if (sub.compareBoundaryPoints(Range.START_TO_START, whole) < 0) sub.setStart(whole.startContainer, whole.startOffset);
+  if (sub.compareBoundaryPoints(Range.END_TO_END, whole) > 0) sub.setEnd(whole.endContainer, whole.endOffset);
+  const off = (node, o) => { const t = document.createRange(); t.setStart(pre, 0); t.setEnd(node, o); return t.toString().length; };
+  const a = off(sub.startContainer, sub.startOffset), b = off(sub.endContainer, sub.endOffset);
+  if (b <= a) return false;
+  const W = r.cols + 1;
+  let l0 = Math.min(r.rows - 1, Math.floor(a / W)), l1 = Math.min(r.rows - 1, Math.floor(b / W));
+  const c0 = a % W, c1 = b % W;
+  let text, msg;
+  if (l0 === l1) {
+    text = r.lines[l0].slice(c0, Math.min(c1, r.cols)).replace(UNSAFE_ALL, ' ');
+    if (state.stripTrailing) text = rstrip(text);
+    msg = `Copied ${Math.min(c1, r.cols) - c0} characters`;
+  } else {
+    if (c0 >= r.cols) l0++;                    // selection starts on a line break
+    if (c1 === 0) l1--;                        // …or ends right after one
+    text = artLines(false).slice(l0, l1 + 1).join('\n');
+    msg = `Copied ${l1 - l0 + 1} of ${r.rows} lines — whole lines, so the alignment holds`;
+  }
+  e.clipboardData.setData('text/plain', text);
+  e.preventDefault();
+  toast(msg);
+  return true;
+}
+
+let modalReturn = null;
+function openCopyPreview() {
+  if (!requireResult()) return;
+  const t = state.copyTarget, c = buildCopy(t), info = COPY_TARGETS[t];
+  const ta = $('#pcText');
+  ta.value = c.text;
+  $('#pcDesc').textContent = `${info.label} · ${lastResult.rows} lines · ${fmtInt(c.chars)} characters`
+    + (c.html ? ` · formatted HTML (Consolas ${c.px} px) is copied alongside this text` : '');
+  const act = document.activeElement;
+  modalReturn = act && act !== document.body && !$('#pcModal').contains(act) ? act : $('#previewCopyBtn');
+  $('#pcModal').hidden = false;
+  ta.scrollTop = 0; ta.scrollLeft = 0;
+  ta.focus(); ta.setSelectionRange(0, 0);
+}
+function closeCopyPreview() {
+  $('#pcModal').hidden = true;
+  if (modalReturn && modalReturn.focus) modalReturn.focus();
+}
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function saveTxt() {
+  if (!requireResult()) return;
+  const eol = state.crlf ? '\r\n' : '\n';
+  download(new Blob([artLines(false).join(eol) + eol], { type:'text/plain;charset=utf-8' }), baseName() + '.txt');
+  toast(`Saved .txt (${lastResult.rows} lines, ${state.crlf ? 'CRLF' : 'LF'} line endings)`);
+}
+
+/** Every character in its own fixed-width box — used when the font can't keep the grid. */
+function gridCellsHTML(r) {
+  let html = '';
+  for (let y = 0; y < r.rows; y++) {
+    const line = r.lines[y];
+    for (let x = 0; x < line.length; x++) {
+      const ch = line[x];
+      html += isBlankCh(ch) || !r.colors ? `<b>${escChar(ch)}</b>` : `<b style="color:${cellHex(r.colors, (y * r.cols + x) * 3)}">${escChar(ch)}</b>`;
+    }
+    if (y < r.rows - 1) html += '\n';
+  }
+  return html;
+}
+function buildHTML() {
+  const r = lastResult, met = fontMetrics(), { fg, bg } = outColors();
+  const fixed = !glyphsUniform(r.mode);
+  const body = fixed ? gridCellsHTML(r) : r.colors ? colorRunsHTML(r) : esc(r.lines.join('\n'));
+  const cellCss = fixed ? `\npre b{display:inline-block;width:${+met.cellW.toFixed(3)}px;height:${met.lineH}px;overflow:hidden;font-weight:inherit;text-align:center;vertical-align:top;}` : '';
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASCII art</title>
+<style>
+html,body{margin:0;background:${bg};}
+pre{margin:0;padding:${state.pngPadding}px;font:${met.weight} ${met.size}px/${met.lineH}px ${met.stack};letter-spacing:${fixed ? 0 : state.letterSpacing}px;color:${fg};white-space:pre;font-kerning:none;font-variant-ligatures:none;}${cellCss}
+</style></head>
+<body><pre>${body}</pre></body></html>
+`;
+}
+function saveHtml() {
+  if (!requireResult()) return;
+  download(new Blob([buildHTML()], { type:'text/html;charset=utf-8' }), baseName() + '.html');
+  toast('Saved .html');
+}
+
+/** Export canvas, clamping the scale so browsers can allocate it. */
+function exportCanvas() {
+  const met = fontMetrics(), pad = state.pngPadding;
+  const W = lastResult.cols * met.cellW + pad * 2, H = lastResult.rows * met.lineH + pad * 2;
+  let scale = state.pngScale;
+  const maxScale = Math.min(16000 / W, 16000 / H, Math.sqrt(120e6 / (W * H)));
+  let reduced = false;
+  if (scale > maxScale) { scale = maxScale; reduced = true; }
+  const c = drawArt(lastResult, { scale, padding:pad, transparent:state.pngTransparent });
+  return { c, reduced, scale };
+}
+function savePng() {
+  if (!requireResult()) return;
+  setStatus('busy', 'Rendering PNG…');
+  setTimeout(() => {
+    const { c, reduced, scale } = exportCanvas();
+    c.toBlob(b => {
+      setStatus('ok', 'Ready.');
+      if (!b) { toast('PNG export failed — the image may be too large.', true); return; }
+      download(b, baseName() + '.png');
+      toast(reduced ? `Saved PNG (scale reduced to ${scale.toFixed(1)}× to fit)` : 'Saved PNG');
+    }, 'image/png');
+  }, 20);
+}
+async function copyImage() {
+  if (!requireResult()) return;
+  if (!navigator.clipboard || !window.ClipboardItem) { toast('Copying images isn’t supported here — use Save PNG.', true); return; }
+  try {
+    const { c } = exportCanvas();
+    const blob = new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('toBlob failed')), 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png':blob })]);
+    toast('Image copied!');
+  } catch (e) { toast('Couldn’t copy the image — try Save PNG.', true); }
+}
+
+function buildSVG() {
+  const r = lastResult, met = fontMetrics(), { fg, bg } = outColors();
+  const pad = state.pngPadding, cw = met.cellW, lh = met.lineH;
+  const W = +(r.cols * cw + pad * 2).toFixed(2), H = +(r.rows * lh + pad * 2).toFixed(2);
+  const n = v => +v.toFixed(2);
+  const parts = [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`,
+    `<style>text{font-family:${met.stack.replace(/"/g, "'")};font-size:${met.size}px;font-weight:${met.weight};white-space:pre;dominant-baseline:central;}</style>`,
+  ];
+  if (!state.pngTransparent) parts.push(`<rect width="100%" height="100%" fill="${bg}"/>`);
+  parts.push(`<g fill="${fg}" xml:space="preserve">`);
+  // When the font lacks braille/block glyphs, give every glyph its own x position.
+  const fixed = !glyphsUniform(r.mode);
+  const xs = (a, b) => Array.from({ length:b - a }, (_, i) => n(pad + (a + i) * cw)).join(' ');
+  for (let y = 0; y < r.rows; y++) {
+    const line = r.lines[y], yy = n(pad + y * lh + lh / 2);
+    if (fixed) {
+      let row = '', x = 0;
+      while (x < line.length) {
+        if (isBlankCh(line[x])) { x++; continue; }
+        const key = r.colors ? cellHex(r.colors, (y * r.cols + x) * 3) : null;
+        let e = x + 1;
+        while (e < line.length && !isBlankCh(line[e]) && (!key || cellHex(r.colors, (y * r.cols + e) * 3) === key)) e++;
+        row += `<tspan x="${xs(x, e)}"${key ? ` fill="${key}"` : ''}>${esc(line.slice(x, e))}</tspan>`;
+        x = e;
+      }
+      if (row) parts.push(`<text y="${yy}">${row}</text>`);
+    } else if (!r.colors) {
+      const t = line.replace(/[ ⠀]+$/, '');
+      if (!t.replace(/[ ⠀]/g, '')) continue;
+      parts.push(`<text x="${pad}" y="${yy}" textLength="${n(t.length * cw)}" lengthAdjust="spacing">${esc(t)}</text>`);
+    } else {
+      let row = '', x = 0;
+      while (x < line.length) {
+        if (isBlankCh(line[x])) { x++; continue; }
+        const i = (y * r.cols + x) * 3, key = cellHex(r.colors, i);
+        let e = x + 1;
+        while (e < line.length && !isBlankCh(line[e]) && cellHex(r.colors, (y * r.cols + e) * 3) === key) e++;
+        row += `<tspan x="${n(pad + x * cw)}" fill="${key}" textLength="${n((e - x) * cw)}" lengthAdjust="spacing">${esc(line.slice(x, e))}</tspan>`;
+        x = e;
+      }
+      if (row) parts.push(`<text y="${yy}">${row}</text>`);
+    }
+  }
+  parts.push('</g></svg>');
+  return parts.join('\n');
+}
+function saveSvg() {
+  if (!requireResult()) return;
+  download(new Blob([buildSVG()], { type:'image/svg+xml;charset=utf-8' }), baseName() + '.svg');
+  toast('Saved SVG');
+}
+
+function exportSettings() {
+  const data = { app:'ascii-art-maker', version:2, settings:{ ...state } };
+  download(new Blob([JSON.stringify(data, null, 2)], { type:'application/json' }), 'ascii-settings.json');
+  toast('Settings exported');
+}
+async function importSettings(file) {
+  try {
+    const json = JSON.parse(await file.text());
+    const s = sanitize(json && json.settings ? json.settings : json);
+    if (!Object.keys(s).length) throw new Error('empty');
+    set({ ...DEFAULTS, preset:null, ...s }, { keepPreset:true });
+    toast('Settings imported');
+  } catch (e) { toast('That file isn’t a valid settings preset.', true); }
+}
+
+/* =====================================================================
+   JS 6. UI WIRING
+   ===================================================================== */
+/* status + toast + tooltip */
+function setStatus(kind, text) {
+  const s = $('#status');
+  s.dataset.kind = kind;
+  $('#statusText').textContent = text;
+}
+let toastTimer, toastMs = 2200;
+const hideToast = () => $('#toast').classList.remove('show');
+/** toast(msg, isErr, { action:{ label, fn }, ms }) — an action button (e.g. Undo) keeps it up longer. */
+function toast(msg, isErr = false, { action = null, ms = 0 } = {}) {
+  const t = $('#toast'), btn = $('#toastAction');
+  $('#toastText').textContent = msg;
+  t.classList.toggle('err', !!isErr);
+  t.classList.toggle('actionable', !!action);
+  btn.hidden = !action;
+  btn.textContent = action ? action.label : '';
+  btn.onclick = action ? () => { hideToast(); action.fn(); } : null;
+  t.classList.add('show');
+  toastMs = ms || (action ? 7000 : msg.length > 60 ? 3800 : 2200);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, toastMs);
+}
+const tip = $('#tip');
+function showTip(el) {
+  tip.textContent = el.dataset.tip; tip.hidden = false;
+  const r = el.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+  const x = clamp(r.left + r.width / 2 - tw / 2, 8, window.innerWidth - tw - 8);
+  let y = r.top - th - 8; if (y < 8) y = r.bottom + 8;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+const hideTip = () => { tip.hidden = true; };
+
+const infoHTML = t => `<span class="info" tabindex="0" data-tip="${esc(t)}" aria-label="More info: ${esc(t)}">ⓘ</span>`;
+const menuItemHTML = (v, label, hint) =>
+  `<button type="button" role="menuitemradio" tabindex="-1" aria-checked="false" data-value="${v}"><span>${esc(label)}</span><span class="mi-hint">${esc(hint)}</span></button>`;
+
+/* =====================================================================
+   JS 6b. MENUS — split-button menus (role="menu", arrow keys, Esc, focus return)
+   ===================================================================== */
+let openMenu = null;
+function wireMenu(trigger, menu, onSelect) {
+  const items = () => $$('[role^="menuitem"]', menu);
+  const place = () => {
+    const r = trigger.parentElement.getBoundingClientRect();
+    menu.style.minWidth = Math.max(240, Math.min(r.width, 360)) + 'px';
+    const mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let y = r.bottom + 4;
+    if (y + mh > window.innerHeight - 8 && r.top - mh - 4 > 8) y = r.top - mh - 4;
+    menu.style.left = clamp(r.right - mw, 8, window.innerWidth - mw - 8) + 'px';
+    menu.style.top = y + 'px';
+  };
+  const close = (focusTrigger = true) => {
+    if (menu.hidden) return;
+    menu.hidden = true; trigger.setAttribute('aria-expanded', 'false');
+    if (openMenu && openMenu.menu === menu) openMenu = null;
+    if (focusTrigger) trigger.focus();
+  };
+  const open = which => {
+    if (openMenu && openMenu.menu !== menu) openMenu.close(false);
+    menu.hidden = false; trigger.setAttribute('aria-expanded', 'true'); place();
+    const list = items();
+    const i = which === 'last' ? list.length - 1 : Math.max(0, list.findIndex(it => it.getAttribute('aria-checked') === 'true'));
+    list[i].focus({ preventScroll:true });
+    openMenu = { menu, trigger, close };
+  };
+  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+  trigger.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); open(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); open('last'); }
+  });
+  menu.addEventListener('keydown', e => {
+    const list = items(), i = list.indexOf(document.activeElement), go = j => list[(j + list.length) % list.length].focus({ preventScroll:true });
+    if (e.key === 'ArrowDown') { e.preventDefault(); go(i + 1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); go(i - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(list.length - 1); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'Tab') close(false);
+  });
+  menu.addEventListener('click', e => {
+    const it = e.target.closest('[role^="menuitem"]');
+    if (!it) return;
+    close();
+    onSelect(it.dataset.value);
+  });
+}
+document.addEventListener('pointerdown', e => {
+  if (openMenu && !openMenu.menu.contains(e.target) && !openMenu.trigger.contains(e.target)) openMenu.close(false);
+});
+window.addEventListener('resize', () => openMenu && openMenu.close(false));
+window.addEventListener('scroll', e => { if (openMenu && !openMenu.menu.contains(e.target)) openMenu.close(false); }, true);
+
+/* build generated controls */
+function buildControls() {
+  // sliders
+  $$('[data-slider]').forEach(host => {
+    const k = host.dataset.slider, d = SLIDERS[k];
+    host.classList.add('field');
+    const right = k === 'cols'
+      ? `<span class="row-r"><input type="number" data-key="cols" min="20" max="600" step="1" aria-label="Output width in characters"><span class="unit">chars</span></span>`
+      : `<output class="val" id="val-${k}" for="in-${k}"></output>`;
+    host.innerHTML =
+      `<div class="field-row"><label for="in-${k}">${d.label}${d.tip ? infoHTML(d.tip) : ''}</label>${right}</div>` +
+      `<input type="range" id="in-${k}" data-key="${k}" min="${d.min}" max="${d.max}" step="${d.step}" title="Double-click to reset">`;
+  });
+  // segmented controls
+  const SEGS = {
+    mode: Object.entries(MODES).map(([v, m]) => ({ v, label:m.label, sample:m.sample })),
+    paletteSize: [2, 8, 16, 256].map(v => ({ v, label:String(v) })),
+    pngScale: [1, 2, 3, 4].map(v => ({ v, label:v + '×' })),
+  };
+  $$('[data-seg]').forEach(seg => {
+    const k = seg.dataset.seg;
+    seg.innerHTML = SEGS[k].map(o =>
+      `<button type="button" role="radio" data-value="${o.v}" aria-checked="false">${esc(o.label)}${o.sample ? `<span class="sample" aria-hidden="true">${esc(o.sample)}</span>` : ''}</button>`).join('');
+    seg.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b) return;
+      const v = typeof DEFAULTS[k] === 'number' ? Number(b.dataset.value) : b.dataset.value;
+      set({ [k]:v });
+    });
+  });
+  // charset tiles
+  $('#charsetTiles').innerHTML = Object.entries(CHARSETS).map(([k, c]) =>
+    `<button type="button" class="tile" role="radio" aria-checked="false" data-charset="${k}">${c.label}<span class="sample" aria-hidden="true" ${k === 'custom' ? 'id="customSample"' : ''}>${esc(c.sample)}</span></button>`).join('');
+  $('#charsetTiles').addEventListener('click', e => { const b = e.target.closest('[data-charset]'); if (b) set({ charset:b.dataset.charset }); });
+  // preset tiles
+  $('#presetTiles').innerHTML = Object.entries(PRESETS).map(([k, p]) => {
+    let sample = esc(p.sample);
+    if (p.rainbow) sample = Array.from(p.sample).map((ch, i) => `<span style="color:hsl(${i * 50},85%,65%)">${esc(ch)}</span>`).join('');
+    const style = p.color ? ` style="color:${p.color};background:#000"` : '';
+    return `<button type="button" class="tile" role="radio" aria-checked="false" data-preset="${k}">${p.label}${p.sub ? `<span class="sub">${p.sub}</span>` : ''}<span class="sample" aria-hidden="true"${style}>${sample}</span></button>`;
+  }).join('');
+  $('#presetTiles').addEventListener('click', e => { const b = e.target.closest('[data-preset]'); if (b) applyPreset(b.dataset.preset); });
+  // fonts
+  $('#font').innerHTML = Object.entries(FONTS).map(([k, f]) => `<option value="${k}">${f.label}</option>`).join('');
+  // split-button menus
+  $$('[data-magic-menu]').forEach(m => { m.innerHTML = Object.entries(MAGIC_SCOPES).map(([k, s]) => menuItemHTML(k, s.label, s.hint)).join(''); });
+  $('#copyMenu').innerHTML = Object.entries(COPY_TARGETS).map(([k, t]) => menuItemHTML(k, t.label, t.hint)).join('');
+  // aria-labels on all info badges
+  $$('[data-tip]').forEach(el => el.setAttribute('aria-label', 'More info: ' + el.dataset.tip));
+}
+
+/* state → UI */
+function evalRule(rule) {
+  const m = rule.match(/^(\w+)(!?=)(.+)$/); if (!m) return true;
+  const hit = m[3].split(',').includes(String(state[m[1]]));
+  return m[2] === '=' ? hit : !hit;
+}
+function syncUI() {
+  $$('[data-key]').forEach(el => {
+    const k = el.dataset.key, v = state[k];
+    if (el.type === 'checkbox') el.checked = !!v;
+    else if (el === document.activeElement && (el.type === 'text' || el.type === 'number')) { /* don't fight the user's typing */ }
+    else if (String(el.value) !== String(v)) el.value = v;
+  });
+  for (const k in SLIDERS) { const o = $('#val-' + k); if (o) o.textContent = SLIDERS[k].fmt(state[k]); }
+  // aspect: auto mode shows the computed value and disables the slider
+  const aIn = $('#in-aspect');
+  if (aIn) {
+    aIn.disabled = state.autoAspect;
+    if (state.autoAspect) { const a = effectiveAspect(); aIn.value = a; $('#val-aspect').textContent = a.toFixed(2) + ' auto'; }
+  }
+  $$('[data-seg]').forEach(seg => {
+    const k = seg.dataset.seg;
+    $$('button', seg).forEach(b => b.setAttribute('aria-checked', String(String(b.dataset.value) === String(state[k]))));
+  });
+  $$('[data-charset]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.charset === state.charset)));
+  $$('[data-preset]').forEach(b => b.setAttribute('aria-checked', String(b.dataset.preset === state.preset)));
+  const cs = $('#customSample'); if (cs) cs.textContent = state.customChars.trim() || '—';
+  $$('[data-hex]').forEach(el => { el.textContent = state[el.dataset.hex]; });
+  $('#flipHBtn').setAttribute('aria-pressed', String(state.flipH));
+  $('#flipVBtn').setAttribute('aria-pressed', String(state.flipV));
+  $('#modeHint').textContent = (MODES[state.mode] || MODES.brightness).hint;
+  $$('[data-show]').forEach(el => { el.hidden = !el.dataset.show.split(';').every(evalRule); });
+  paintMagic();
+  paintCopyTarget();
+}
+
+/** Central setter: update state, sync UI, persist, re-render if needed. */
+const NO_RENDER = new Set([...GROUPS.export, ...GROUPS.prefs]);
+const STYLE_KEYS = new Set(GROUPS.style);
+function set(patch, { keepPreset = false, fromMagic = false } = {}) {
+  let orient = false, render = false, styleChanged = false;
+  for (const k in patch) {
+    if (state[k] === patch[k]) continue;
+    state[k] = patch[k];
+    if (k === 'rotate' || k === 'flipH' || k === 'flipV') orient = true;
+    if (!NO_RENDER.has(k) && k !== 'preset') render = true;
+    if (STYLE_KEYS.has(k)) styleChanged = true;
+  }
+  // Any manual change that affects the picture cancels a Magic touch run (and its pending result).
+  if (!fromMagic && (render || orient)) {
+    if (magic.running) cancelMagic('Magic touch cancelled — you changed a setting.');
+    magic.confirm = null;
+  }
+  if (styleChanged && !keepPreset) state.preset = null;
+  syncUI(); saveSettings();
+  if (orient) { rebuildOrient(); view.fit = true; }
+  if (render) scheduleRender();
+}
+function pick(keys, src) { const o = {}; keys.forEach(k => { o[k] = src[k]; }); return o; }
+function applyPreset(id) {
+  const p = PRESETS[id]; if (!p) return;
+  set({ ...pick(GROUPS.style, DEFAULTS), ...p.s, preset:id }, { keepPreset:true });
+  view.fit = true;
+}
+function resetGroup(g) {
+  if (g === 'image') { loadSample(); toast('Back to the sample image'); return; }
+  set(pick(GROUPS[g], DEFAULTS));
+  if (g === 'adjust') view.fit = true;
+  toast('Section reset');
+}
+
+/* Custom characters: drop anything that would break the grid, and say what was removed. */
+function onCustomInput(el) {
+  const { value, removed } = filterCustom(el.value);
+  if (value !== el.value) {
+    const pos = Math.max(0, (el.selectionStart || 0) - (el.value.length - value.length));
+    el.value = value;
+    try { el.setSelectionRange(pos, pos); } catch (e) {}
+  }
+  set({ customChars:value.slice(0, 256) });
+  const w = $('#customWarn');
+  if (removed.length) {
+    const name = ch => ch === '\t' ? 'Tab' : ch === ' ' ? 'Space'
+      : /^[\p{L}\p{N}\p{P}\p{S}]$/u.test(ch) && !UNSAFE_ONE.test(ch) ? `“${ch}”` : 'U+' + ch.codePointAt(0).toString(16).toUpperCase().padStart(4, '0');
+    const many = removed.length > 1;
+    w.textContent = `Removed ${removed.map(name).join(', ')} — ${many ? 'these are' : 'it is'} not the same width as the other characters, so ${many ? 'they' : 'it'} would break the alignment.`;
+    w.hidden = false;
+  } else if (el.value === state.customChars) w.hidden = true;
+}
+
+/* read a [data-key] element's value */
+function readEl(el) {
+  const k = el.dataset.key;
+  if (el.type === 'checkbox') return el.checked;
+  if (typeof DEFAULTS[k] === 'number') {
+    const v = parseFloat(el.value); if (!Number.isFinite(v)) return undefined;
+    const sl = SLIDERS[k]; return sl ? clamp(v, sl.min, sl.max) : v;
+  }
+  return el.value;
+}
+
+function wireEvents() {
+  // generic inputs (sliders, selects, checkboxes, colours, text)
+  document.addEventListener('input', e => {
+    const el = e.target.closest && e.target.closest('[data-key]');
+    if (!el || el.type === 'number') return;
+    if (el.dataset.key === 'customChars') { onCustomInput(el); return; }
+    const v = readEl(el); if (v !== undefined) set({ [el.dataset.key]:v });
+  });
+  document.addEventListener('change', e => {
+    const el = e.target.closest && e.target.closest('[data-key]');
+    if (!el) return;
+    if (el.dataset.key === 'customChars') { if (el.value !== state.customChars) onCustomInput(el); return; }
+    const v = readEl(el);
+    if (v !== undefined) set({ [el.dataset.key]:v });
+    if (el.type === 'number') el.value = state[el.dataset.key];
+  });
+  // double-click a slider → reset to default
+  document.addEventListener('dblclick', e => {
+    const el = e.target;
+    if (el.matches && el.matches('input[type=range][data-key]') && !el.disabled) set({ [el.dataset.key]:DEFAULTS[el.dataset.key] });
+  });
+
+  // accordions
+  $$('.step-toggle[aria-controls]').forEach(btn => btn.addEventListener('click', () => {
+    const open = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', String(open));
+    $('#' + btn.getAttribute('aria-controls')).hidden = !open;
+  }));
+  $$('[data-reset]').forEach(b => b.addEventListener('click', () => resetGroup(b.dataset.reset)));
+
+  // upload
+  const drop = $('#drop'), fileInput = $('#fileInput');
+  drop.addEventListener('click', () => fileInput.click());
+  drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+  fileInput.addEventListener('change', () => { loadFile(fileInput.files[0]); fileInput.value = ''; });
+  let dragDepth = 0;
+  window.addEventListener('dragenter', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { dragDepth++; drop.classList.add('over'); } });
+  window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) drop.classList.remove('over'); });
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; drop.classList.remove('over');
+    const f = e.dataTransfer && [...e.dataTransfer.files].find(isImageFile);
+    if (f) loadFile(f); else if (e.dataTransfer && e.dataTransfer.files.length) toast('That file is not a supported image.', true);
+  });
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData ? [...e.clipboardData.items] : [];
+    const it = items.find(i => i.kind === 'file' && /^image\//.test(i.type));
+    if (it) { e.preventDefault(); loadFile(it.getAsFile()); }
+  });
+  $('#removeBtn').addEventListener('click', () => { loadSample(); toast('Image removed'); });
+
+  // adjust: orientation
+  $('#rotL').addEventListener('click', () => set({ rotate:(state.rotate + 270) % 360 }));
+  $('#rotR').addEventListener('click', () => set({ rotate:(state.rotate + 90) % 360 }));
+  $('#flipHBtn').addEventListener('click', () => set({ flipH:!state.flipH }));
+  $('#flipVBtn').addEventListener('click', () => set({ flipV:!state.flipV }));
+
+  // ✨ Magic touch (both split buttons) — the main part runs or cancels, the menu picks a scope and runs it
+  $$('[data-magic]').forEach(split => {
+    split.querySelector('[data-magic-main]').addEventListener('click', () => (magic.running ? cancelMagic() : runMagic()));
+    wireMenu(split.querySelector('[data-magic-caret]'), split.querySelector('[data-magic-menu]'), v => runMagic(v));
+  });
+  $('#magicCancel').addEventListener('click', () => cancelMagic());
+
+  // export: "Copy for…" split button — the main part uses the remembered target, the menu picks one and copies
+  $('#copyText').addEventListener('click', () => copyText());
+  wireMenu($('#copyCaret'), $('#copyMenu'), v => { set({ copyTarget:v }); copyText(v); });
+  $('#pvCopy').addEventListener('click', () => copyText());
+  $('#copyHints').addEventListener('click', e => { if (e.target.closest('[data-shrink]')) shrinkToFit(); });
+  $('#previewCopyBtn').addEventListener('click', openCopyPreview);
+  $('#pcClose').addEventListener('click', closeCopyPreview);
+  $('#pcSelect').addEventListener('click', () => { const ta = $('#pcText'); ta.focus(); ta.select(); });
+  $('#pcCopy').addEventListener('click', () => copyText());
+  $('#pcModal').addEventListener('pointerdown', e => { if (e.target === e.currentTarget) closeCopyPreview(); });
+  $('#pcModal').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeCopyPreview(); }
+    else if (e.key === 'Tab') {                                     // keep focus inside the dialog
+      const f = $$('button, textarea', $('#pcModal')), i = f.indexOf(document.activeElement);
+      e.preventDefault();
+      f[(i + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+    }
+  });
+  // One copy handler: our own clipboard writes first, then drag-selections in the preview.
+  document.addEventListener('copy', e => {
+    if (pendingClip) {
+      e.clipboardData.setData('text/plain', pendingClip.text);
+      if (pendingClip.html) e.clipboardData.setData('text/html', pendingClip.html);
+      e.preventDefault();
+      return;
+    }
+    copySelection(e);
+  });
+  $('#toast').addEventListener('pointerenter', () => clearTimeout(toastTimer));
+  $('#toast').addEventListener('pointerleave', () => { clearTimeout(toastTimer); toastTimer = setTimeout(hideToast, 2000); });
+  $('#saveTxt').addEventListener('click', saveTxt);
+  $('#saveHtml').addEventListener('click', saveHtml);
+  $('#savePng').addEventListener('click', savePng);
+  $('#saveSvg').addEventListener('click', saveSvg);
+  $('#copyImg').addEventListener('click', copyImage);
+  $('#presetSave').addEventListener('click', exportSettings);
+  $('#presetLoad').addEventListener('click', () => $('#presetInput').click());
+  $('#presetInput').addEventListener('change', e => { const f = e.target.files[0]; if (f) importSettings(f); e.target.value = ''; });
+  $('#resetAll').addEventListener('click', () => {
+    set({ ...DEFAULTS, preset:null }, { keepPreset:true });
+    view.fit = true; toast('All settings reset');
+  });
+
+  // preview: zoom buttons, compare
+  $('#zoomIn').addEventListener('click', () => setZoom(view.scale * 1.25));
+  $('#zoomOut').addEventListener('click', () => setZoom(view.scale / 1.25));
+  $('#zoomFit').addEventListener('click', fitView);
+  $('#zoom100').addEventListener('click', zoom100);
+  $('#compareBtn').addEventListener('click', () => setCompare(!compareOn));
+  wireCompareBar();
+
+  // Ctrl/Cmd + wheel zooms; plain wheel pans when content overflows
+  viewport.addEventListener('wheel', e => {
+    const r = viewport.getBoundingClientRect();
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      setZoom(view.scale * Math.exp(-e.deltaY * 0.0022), e.clientX - r.left, e.clientY - r.top);
+    } else if (overflows()) {
+      e.preventDefault();
+      view.x -= e.shiftKey ? e.deltaY : e.deltaX; view.y -= e.shiftKey ? 0 : e.deltaY;
+      view.fit = false; applyView();
+    }
+  }, { passive:false });
+
+  // Pan: Space + drag, middle-drag, touch, or dragging the empty area around the art.
+  // A plain left-drag on the art itself selects text instead, so the two never fight.
+  let drag = null, spaceDown = false;
+  const setSpace = on => { spaceDown = on; viewport.classList.toggle('space-pan', on); };
+  document.addEventListener('keydown', e => {
+    if (e.key !== ' ' || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(t.tagName))) return;
+    if (t === viewport || viewport.matches(':hover')) { e.preventDefault(); if (!spaceDown) setSpace(true); }
+  });
+  document.addEventListener('keyup', e => { if (e.key === ' ') setSpace(false); });
+  window.addEventListener('blur', () => setSpace(false));
+  viewport.addEventListener('mousedown', e => { if (e.button === 1) e.preventDefault(); });   // no autoscroll
+  viewport.addEventListener('pointerdown', e => {
+    if (e.target.closest && e.target.closest('#divider') && e.button === 0 && !spaceDown) return;   // the compare bar handles its own drag
+    const onArt = !!(e.target.closest && e.target.closest('#art'));
+    const pan = e.button === 1 || (e.button === 0 && (spaceDown || e.pointerType === 'touch' || !onArt));
+    if (e.button === 1) e.preventDefault();
+    if (!pan || !overflows()) return;
+    if (spaceDown) { const s = window.getSelection(); if (s) s.removeAllRanges(); }
+    drag = { x:e.clientX, y:e.clientY, vx:view.x, vy:view.y };
+    viewport.setPointerCapture(e.pointerId); viewport.classList.add('dragging');
+    e.preventDefault(); viewport.focus({ preventScroll:true });
+  });
+  viewport.addEventListener('pointermove', e => {
+    if (!drag) return;
+    view.x = drag.vx + e.clientX - drag.x; view.y = drag.vy + e.clientY - drag.y;
+    view.fit = false; applyView();
+  });
+  const endDrag = () => { drag = null; viewport.classList.remove('dragging'); };
+  viewport.addEventListener('pointerup', endDrag);
+  viewport.addEventListener('pointercancel', endDrag);
+
+  // Ctrl/Cmd+C on the focused preview copies the ASCII (unless the user selected text)
+  viewport.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !art.contains(sel.anchorNode)) { e.preventDefault(); copyText(); }
+    } else if (e.key === '+' || e.key === '=') { setZoom(view.scale * 1.25); }
+    else if (e.key === '-') { setZoom(view.scale / 1.25); }
+  });
+
+  // global shortcuts: I = invert, R = reset view
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && magic.running && !openMenu && $('#pcModal').hidden) { cancelMagic(); return; }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName))) return;
+    if (e.key === 'i' || e.key === 'I') { set({ invert:!state.invert }); toast(state.invert ? 'Invert on' : 'Invert off'); }
+    else if (e.key === 'r' || e.key === 'R') { fitView(); }
+  });
+
+  // tooltips
+  document.addEventListener('pointerover', e => { const el = e.target.closest && e.target.closest('[data-tip]'); if (el) showTip(el); });
+  document.addEventListener('pointerout', e => { if (e.target.closest && e.target.closest('[data-tip]')) hideTip(); });
+  document.addEventListener('focusin', e => { if (e.target.dataset && e.target.dataset.tip) showTip(e.target); });
+  document.addEventListener('focusout', hideTip);
+  $('#controls').addEventListener('scroll', hideTip, { passive:true });
+
+  // keep "fit" when the viewport resizes
+  new ResizeObserver(() => { if (view.fit) fitView(); else applyView(); }).observe(viewport);
+}
+
+/* =====================================================================
+   JS 7. BOOT
+   ===================================================================== */
+function init() {
+  buildControls();
+  // On phones, collapse "Adjust" and "Export" to keep the page short.
+  if (window.matchMedia('(max-width: 999px)').matches) {
+    ['step2', 'step4'].forEach(id => {
+      const btn = $(`#${id} .step-toggle`); btn.setAttribute('aria-expanded', 'false');
+      $('#' + btn.getAttribute('aria-controls')).hidden = true;
+    });
+  }
+  syncUI();
+  wireEvents();
+  initWorker();
+  loadSample();
+  // Re-measure and re-render once the web fonts arrive (metrics change slightly).
+  if (document.fonts && document.fonts.load) {
+    Promise.all([
+      document.fonts.load('400 16px "JetBrains Mono"'),
+      document.fonts.load('700 16px "JetBrains Mono"'),
+    ]).catch(() => {}).then(() => { fontEpoch++; syncUI(); scheduleRender(); });
+  }
+}
+init();
+</script>
+</body>
+</html>
